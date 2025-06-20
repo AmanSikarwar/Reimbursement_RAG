@@ -1,0 +1,519 @@
+"""
+Vector Store Service.
+
+This service handles interactions with the Qdrant vector database for storing
+and retrieving invoice analysis embeddings.
+"""
+
+import asyncio
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
+from sentence_transformers import SentenceTransformer
+
+from app.core.config import settings
+from app.models.schemas import SearchResult, VectorDocument
+
+logger = logging.getLogger(__name__)
+
+
+class VectorStoreService:
+    """
+    Service for managing vector storage and retrieval using Qdrant.
+
+    This class handles embedding generation, document storage, and similarity search
+    for invoice analysis data.
+    """
+
+    def __init__(self):
+        """Initialize the vector store service."""
+        self.logger = logger
+        self.client: Optional[QdrantClient] = None
+        self.embedding_model: Optional[SentenceTransformer] = None
+        self.collection_name = settings.COLLECTION_NAME
+        self.vector_size = settings.VECTOR_SIZE
+
+    async def initialize(self):
+        """
+        Initialize the Qdrant client and embedding model.
+
+        Sets up the connection to Qdrant and loads the embedding model.
+        Also creates the collection if it doesn't exist.
+        """
+        try:
+            # Initialize Qdrant client
+            self.client = QdrantClient(
+                url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY
+            )
+
+            # Load embedding model
+            self.embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
+            self.vector_size = self.embedding_model.get_sentence_embedding_dimension()
+
+            # Create collection if it doesn't exist
+            await self._create_collection_if_not_exists()
+
+            self.logger.info("Vector store service initialized successfully")
+
+        except Exception as e:
+            self.logger.error(f"Error initializing vector store: {e}", exc_info=True)
+            raise
+
+    async def _create_collection_if_not_exists(self):
+        """Create the collection if it doesn't already exist."""
+        if not self.client:
+            raise ValueError("Qdrant client not initialized")
+
+        if not self.embedding_model:
+            raise ValueError("Embedding model not initialized")
+
+        try:
+            # Check if collection exists using a more reliable method
+            try:
+                collections = self.client.get_collections()
+                collection_names = [col.name for col in collections.collections]
+
+                if self.collection_name in collection_names:
+                    self.logger.info(
+                        f"Collection already exists: {self.collection_name}"
+                    )
+                    return
+
+            except Exception as e:
+                self.logger.warning(f"Could not check existing collections: {e}")
+                # Try alternative method to check collection existence
+                try:
+                    self.client.get_collection(self.collection_name)
+                    self.logger.info(
+                        f"Collection already exists: {self.collection_name}"
+                    )
+                    return
+                except Exception:
+                    # Collection doesn't exist, continue to create it
+                    pass
+
+            # Collection doesn't exist, create it
+            if self.vector_size is None:
+                raise ValueError(
+                    "Vector size not determined - embedding model not properly initialized"
+                )
+
+            try:
+                self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=VectorParams(
+                        size=self.vector_size, distance=Distance.COSINE
+                    ),
+                )
+                self.logger.info(f"Created collection: {self.collection_name}")
+            except Exception as e:
+                if "already exists" in str(e).lower():
+                    self.logger.info(
+                        f"Collection already exists: {self.collection_name}"
+                    )
+                else:
+                    raise
+
+        except Exception as e:
+            self.logger.error(f"Error creating collection: {e}")
+            raise
+
+    def _generate_embedding(self, text: str) -> List[float]:
+        """
+        Generate embedding for the given text.
+
+        Args:
+            text: Text to generate embedding for
+
+        Returns:
+            List of floats representing the embedding
+        """
+        if not self.embedding_model:
+            raise ValueError("Embedding model not initialized")
+
+        try:
+            embedding = self.embedding_model.encode(text)
+            # Convert numpy array or tensor to list of floats
+            import numpy as np
+
+            if isinstance(embedding, np.ndarray):
+                return embedding.tolist()
+            else:
+                # Fallback for other types
+                return [float(x) for x in embedding]
+        except Exception as e:
+            self.logger.error(f"Error generating embedding: {e}")
+            raise
+
+    async def store_invoice_analysis(
+        self,
+        invoice_text: str,
+        analysis_result: Dict[str, Any],
+        employee_name: str,
+        invoice_filename: str,
+    ) -> str:
+        """
+        Store invoice analysis in the vector database.
+
+        Args:
+            invoice_text: Original invoice text
+            analysis_result: LLM analysis result
+            employee_name: Name of the employee
+            invoice_filename: Original filename of the invoice
+
+        Returns:
+            Document ID of the stored record
+        """
+        try:
+            # Generate unique document ID
+            doc_id = str(uuid.uuid4())
+
+            # Prepare content for embedding (combine invoice text and analysis)
+            content_for_embedding = f"""
+            Invoice: {invoice_text}
+            
+            Analysis:
+            Status: {analysis_result.get("status", "")}
+            Reason: {analysis_result.get("reason", "")}
+            Categories: {", ".join(analysis_result.get("categories", []))}
+            """
+
+            # Generate embedding
+            embedding = await asyncio.get_event_loop().run_in_executor(
+                None, self._generate_embedding, content_for_embedding
+            )
+
+            # Prepare metadata
+            metadata = {
+                "employee_name": employee_name,
+                "invoice_filename": invoice_filename,
+                "status": analysis_result.get("status", ""),
+                "reason": analysis_result.get("reason", ""),
+                "total_amount": analysis_result.get("total_amount", 0.0),
+                "reimbursement_amount": analysis_result.get(
+                    "reimbursement_amount", 0.0
+                ),
+                "currency": analysis_result.get("currency", "USD"),
+                "categories": analysis_result.get("categories", []),
+                "policy_violations": analysis_result.get("policy_violations", []),
+                "date": datetime.now(timezone.utc).isoformat(),
+                "doc_type": "invoice_analysis",
+            }
+
+            # Create point for storage
+            point = PointStruct(
+                id=doc_id,
+                vector=embedding,
+                payload={
+                    "content": invoice_text,
+                    "analysis": analysis_result,
+                    **metadata,
+                },
+            )
+
+            # Store in Qdrant
+            if not self.client:
+                raise ValueError("Qdrant client not initialized")
+            self.client.upsert(collection_name=self.collection_name, points=[point])
+
+            self.logger.info(f"Stored invoice analysis for {employee_name}: {doc_id}")
+            return doc_id
+
+        except Exception as e:
+            self.logger.error(f"Error storing invoice analysis: {e}", exc_info=True)
+            raise
+
+    async def search_similar_invoices(
+        self,
+        query_text: str,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 10,
+        score_threshold: float = 0.5,
+    ) -> List[SearchResult]:
+        """
+        Search for similar invoices using vector similarity.
+
+        Args:
+            query_text: Text query to search for
+            filters: Optional metadata filters
+            limit: Maximum number of results
+            score_threshold: Minimum similarity score threshold
+
+        Returns:
+            List of search results with documents and scores
+        """
+        try:
+            # Generate query embedding
+            query_embedding = await asyncio.get_event_loop().run_in_executor(
+                None, self._generate_embedding, query_text
+            )
+
+            # Build filter conditions
+            filter_conditions = None
+            if filters:
+                filter_conditions = self._build_filter_conditions(filters)
+
+            # Perform search
+            if not self.client:
+                raise ValueError("Qdrant client not initialized")
+
+            search_results = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_embedding,
+                query_filter=filter_conditions,
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=True,
+            )
+
+            # Convert to SearchResult objects
+            results = []
+            for result in search_results:
+                payload = result.payload or {}
+                doc = VectorDocument(
+                    id=str(result.id),
+                    content=payload.get("content", ""),
+                    embedding=query_embedding,  # Use query embedding as placeholder
+                    metadata=payload,
+                )
+
+                search_result = SearchResult(document=doc, score=result.score)
+                results.append(search_result)
+
+            self.logger.info(f"Found {len(results)} similar invoices for query")
+            return results
+
+        except Exception as e:
+            self.logger.error(f"Error searching similar invoices: {e}", exc_info=True)
+            return []
+
+    def _build_filter_conditions(self, filters: Dict[str, Any]) -> Optional[Filter]:
+        """
+        Build Qdrant filter conditions from filter dictionary.
+
+        Args:
+            filters: Dictionary of filters
+
+        Returns:
+            Qdrant Filter object or None if no conditions
+        """
+        conditions = []
+
+        # Employee name filter
+        if "employee_name" in filters and filters["employee_name"]:
+            conditions.append(
+                FieldCondition(
+                    key="employee_name",
+                    match=MatchValue(value=filters["employee_name"]),
+                )
+            )
+
+        # Status filter
+        if "status" in filters and filters["status"]:
+            conditions.append(
+                FieldCondition(key="status", match=MatchValue(value=filters["status"]))
+            )
+
+        # Date range filters would require more complex conditions
+        # For now, we'll keep it simple with exact matches
+
+        return Filter(must=conditions) if conditions else None
+
+    async def get_document_by_id(self, doc_id: str) -> Optional[VectorDocument]:
+        """
+        Retrieve a document by its ID.
+
+        Args:
+            doc_id: Document identifier
+
+        Returns:
+            VectorDocument if found, None otherwise
+        """
+        try:
+            if not self.client:
+                raise ValueError("Qdrant client not initialized")
+
+            result = self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=[doc_id],
+                with_payload=True,
+                with_vectors=True,
+            )
+
+            if result:
+                point = result[0]
+                payload = point.payload or {}
+                vector = point.vector
+
+                # Handle vector data properly
+                embedding: List[float] = []
+                if vector:
+                    if isinstance(vector, dict):
+                        # Handle named vectors
+                        first_vector = list(vector.values())[0] if vector else []
+                        embedding = self._flatten_to_float_list(first_vector)
+                    elif isinstance(vector, list):
+                        # Handle regular vectors
+                        embedding = self._flatten_to_float_list(vector)
+                    else:
+                        embedding = []
+
+                return VectorDocument(
+                    id=str(point.id),
+                    content=payload.get("content", ""),
+                    embedding=embedding,
+                    metadata=payload,
+                )
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error retrieving document {doc_id}: {e}")
+            return None
+
+    async def delete_document(self, doc_id: str) -> bool:
+        """
+        Delete a document from the vector store.
+
+        Args:
+            doc_id: Document identifier
+
+        Returns:
+            True if deletion was successful
+        """
+        try:
+            if not self.client:
+                raise ValueError("Qdrant client not initialized")
+
+            self.client.delete(
+                collection_name=self.collection_name, points_selector=[doc_id]
+            )
+
+            self.logger.info(f"Deleted document: {doc_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error deleting document {doc_id}: {e}")
+            return False
+
+    async def get_collection_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about the collection.
+
+        Returns:
+            Dictionary containing collection statistics
+        """
+        try:
+            if not self.client:
+                raise ValueError("Qdrant client not initialized")
+
+            info = self.client.get_collection(self.collection_name)
+
+            return {
+                "collection_name": self.collection_name,
+                "total_documents": info.points_count,
+                "vector_size": self.vector_size,  # Use our stored value
+                "distance_metric": "cosine",  # We know we use cosine
+                "status": "ready",  # Simplified status
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error getting collection stats: {e}")
+            return {}
+
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Perform health check on the vector store.
+
+        Returns:
+            Dictionary with health status information
+
+        Raises:
+            Exception: If health check fails
+        """
+        if not self.client:
+            raise Exception("Vector store client not initialized")
+
+        try:
+            # Test connection by listing collections
+            collections = self.client.get_collections()
+
+            # Test collection access
+            collection_info = self.client.get_collection(self.collection_name)
+
+            return {
+                "status": "healthy",
+                "collections_count": len(collections.collections) if collections else 0,
+                "collection_name": self.collection_name,
+                "collection_points": collection_info.points_count
+                if collection_info
+                else 0,
+            }
+        except Exception as e:
+            self.logger.error(f"Vector store health check failed: {e}")
+            raise Exception(f"Vector store unhealthy: {str(e)}")
+
+    async def get_collection_info(self) -> Dict[str, Any]:
+        """
+        Get detailed collection information.
+
+        Returns:
+            Dictionary with collection details
+        """
+        if not self.client:
+            raise Exception("Vector store client not initialized")
+
+        try:
+            collection_info = self.client.get_collection(self.collection_name)
+            return {
+                "name": self.collection_name,
+                "points_count": collection_info.points_count if collection_info else 0,
+                "status": collection_info.status if collection_info else "unknown",
+                "vector_size": self.vector_size,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get collection info: {e}")
+            raise Exception(f"Collection access failed: {str(e)}")
+
+    def _flatten_to_float_list(self, data: Any) -> List[float]:
+        """
+        Flatten nested vector data to a simple list of floats.
+
+        Args:
+            data: Vector data that could be nested or contain StrictFloat types
+
+        Returns:
+            List of float values
+        """
+        result = []
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, list):
+                    # Recursive flatten for nested lists
+                    result.extend(self._flatten_to_float_list(item))
+                else:
+                    # Convert individual items to float
+                    try:
+                        result.append(float(item))
+                    except (ValueError, TypeError):
+                        # Skip invalid values
+                        continue
+        else:
+            # Single value
+            try:
+                result.append(float(data))
+            except (ValueError, TypeError):
+                # Skip invalid values
+                pass
+        return result
