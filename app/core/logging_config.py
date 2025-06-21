@@ -19,14 +19,11 @@ def setup_logging():
     Creates log directory if it doesn't exist and configures loggers
     with appropriate handlers and formatters.
     """
-    # Create logs directory if it doesn't exist
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
 
-    # Generate log filename with timestamp
     log_filename = f"{log_dir}/app_{datetime.now().strftime('%Y%m%d')}.log"
 
-    # Logging configuration
     LOGGING_CONFIG = {
         "version": 1,
         "disable_existing_loggers": False,
@@ -49,13 +46,13 @@ def setup_logging():
                 "level": "DEBUG",
                 "formatter": "detailed",
                 "filename": log_filename,
-                "maxBytes": 10485760,  # 10MB
+                "maxBytes": 10485760,
                 "backupCount": 5,
             },
         },
         "loggers": {
-            "": {  # Root logger
-                "level": settings.LOG_LEVEL,
+            "": {
+                "level": settings.LOG_LEVEL.value,
                 "handlers": ["console", "file"],
             },
             "uvicorn": {
@@ -71,14 +68,12 @@ def setup_logging():
         },
     }
 
-    # Apply logging configuration
     logging.config.dictConfig(LOGGING_CONFIG)
 
-    # Log startup message
     logger = logging.getLogger(__name__)
     logger.info("Logging system initialized")
     logger.info(f"Log file: {log_filename}")
-    logger.info(f"Log level: {settings.LOG_LEVEL}")
+    logger.info(f"Log level: {settings.LOG_LEVEL.value}")
 
 
 def get_logger(name: str) -> logging.Logger:

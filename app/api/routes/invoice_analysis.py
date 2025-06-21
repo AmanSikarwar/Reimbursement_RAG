@@ -73,20 +73,15 @@ async def analyze_invoices(
     logger.info(f"Starting invoice analysis for employee: {employee_name}")
 
     try:
-        # Validate uploaded files
         await validate_file(policy_file, ["pdf"])
         await validate_file(invoices_zip, ["zip"])
 
-        # Initialize services
         pdf_processor = PDFProcessor()
         llm_service = LLMService()
 
-        # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Generate hash for policy file to check for duplicates
             policy_hash = await generate_upload_file_hash(policy_file)
 
-            # Check if policy already exists in vector store
             existing_policy = await vector_store.check_file_exists(
                 policy_hash, "policy"
             )
@@ -97,7 +92,6 @@ async def analyze_invoices(
                 )
                 policy_text = existing_policy.content
             else:
-                # Save and process policy file
                 policy_path = await save_uploaded_file(policy_file, temp_dir)
                 policy_text = await pdf_processor.extract_text(policy_path)
 
@@ -106,7 +100,6 @@ async def analyze_invoices(
                         status_code=400, detail="Could not extract text from policy PDF"
                     )
 
-                # Store policy document in vector database for chatbot context
                 try:
                     await vector_store.store_policy_document(
                         policy_text=policy_text,
@@ -119,9 +112,7 @@ async def analyze_invoices(
                     )
                 except Exception as e:
                     logger.warning(f"Failed to store policy in vector database: {e}")
-                    # Don't fail the entire process if policy storage fails
 
-            # Save and extract invoices ZIP file
             zip_path = await save_uploaded_file(invoices_zip, temp_dir)
             invoice_files = await extract_zip_file(zip_path, temp_dir)
 
@@ -130,12 +121,10 @@ async def analyze_invoices(
                     status_code=400, detail="No PDF files found in the ZIP archive"
                 )
 
-            # Process each invoice
             analysis_results = []
             processing_errors = []
 
-            # Process invoices concurrently (with limit to avoid overwhelming the system)
-            semaphore = asyncio.Semaphore(3)  # Limit concurrent processing
+            semaphore = asyncio.Semaphore(5)
 
             async def process_single_invoice(invoice_path: str):
                 async with semaphore:
@@ -155,18 +144,15 @@ async def analyze_invoices(
                         )
                         return None
 
-            # Process all invoices
             tasks = [
                 process_single_invoice(invoice_path) for invoice_path in invoice_files
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Collect successful results
             for result in results:
                 if result and not isinstance(result, Exception):
                     analysis_results.append(result)
 
-            # Prepare response
             response = InvoiceAnalysisResponse(
                 success=True,
                 message=f"Processed {len(analysis_results)} invoices successfully",
@@ -218,10 +204,8 @@ async def _process_invoice(
     Returns:
         Dictionary containing analysis results
     """
-    # Generate hash for the invoice file to check for duplicates
     invoice_hash = await generate_file_hash_from_path(invoice_path)
 
-    # Check if this invoice has already been processed for this employee
     existing_invoice = await vector_store.check_invoice_exists(
         invoice_hash, employee_name
     )
@@ -230,7 +214,6 @@ async def _process_invoice(
         logger.info(
             f"Invoice {os.path.basename(invoice_path)} already processed for {employee_name}"
         )
-        # Return the existing analysis result
         analysis_result = existing_invoice.metadata.get("analysis", {})
         return {
             "filename": os.path.basename(invoice_path),
@@ -243,21 +226,18 @@ async def _process_invoice(
             "currency": existing_invoice.metadata.get("currency"),
             "categories": existing_invoice.metadata.get("categories"),
             "policy_violations": existing_invoice.metadata.get("policy_violations"),
-            "from_cache": True,  # Indicate this result came from cache
+            "from_cache": True,
         }
 
-    # Extract text from invoice
     invoice_text = await pdf_processor.extract_text(invoice_path)
 
     if not invoice_text.strip():
         raise ValueError("Could not extract text from invoice PDF")
 
-    # Analyze invoice with LLM
     analysis_result = await llm_service.analyze_invoice(
         invoice_text=invoice_text, policy_text=policy_text, employee_name=employee_name
     )
 
-    # Store in vector database with file hash
     await vector_store.store_invoice_analysis(
         invoice_text=invoice_text,
         analysis_result=analysis_result,
@@ -275,7 +255,7 @@ async def _process_invoice(
         "currency": analysis_result.get("currency"),
         "categories": analysis_result.get("categories"),
         "policy_violations": analysis_result.get("policy_violations"),
-        "from_cache": False,  # Indicate this is a new analysis
+        "from_cache": False,
     }
 
 
@@ -325,9 +305,7 @@ async def analyze_invoices_streaming(
     """
     logger.info(f"Starting streaming invoice analysis for employee: {employee_name}")
 
-    # Read file contents BEFORE entering the async generator to avoid I/O issues
     try:
-        # Validate files first
         await validate_file(policy_file, ["pdf"])
         await validate_file(invoices_zip, ["zip"])
 
@@ -335,7 +313,6 @@ async def analyze_invoices_streaming(
             f"Reading file contents for: {policy_file.filename}, {invoices_zip.filename}"
         )
 
-        # Read file contents immediately
         policy_content = await policy_file.read()
         zip_content = await invoices_zip.read()
 
@@ -343,7 +320,6 @@ async def analyze_invoices_streaming(
             f"Successfully read file contents: policy={len(policy_content)} bytes, zip={len(zip_content)} bytes"
         )
 
-        # Store file metadata for use in generator
         policy_filename = policy_file.filename
         zip_filename = invoices_zip.filename
 
@@ -356,24 +332,18 @@ async def analyze_invoices_streaming(
     async def generate_streaming_analysis():
         """Generate streaming analysis response chunks."""
         try:
-            # Yield initial metadata
             yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.METADATA, data={'employee': employee_name, 'status': 'starting'}).model_dump_json()}\n\n"
 
-            # Initialize services
             pdf_processor = PDFProcessor()
             llm_service = LLMService()
 
-            # Create temporary directory for processing
             with tempfile.TemporaryDirectory() as temp_dir:
-                # Process policy file
                 yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'checking_policy_duplicates'}).model_dump_json()}\n\n"
 
-                # Generate hash for policy file to check for duplicates
                 from app.utils.file_utils import generate_file_hash
 
                 policy_hash = await generate_file_hash(policy_content)
 
-                # Check if policy already exists in vector store
                 existing_policy = await vector_store.check_policy_exists(policy_hash)
 
                 if existing_policy:
@@ -382,7 +352,6 @@ async def analyze_invoices_streaming(
                 else:
                     yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'extracting_policy'}).model_dump_json()}\n\n"
 
-                    # Save policy file using pre-read content
                     policy_path = os.path.join(
                         temp_dir, sanitize_filename(policy_filename or "policy.pdf")
                     )
@@ -401,7 +370,6 @@ async def analyze_invoices_streaming(
                         yield f"data: {error_chunk.model_dump_json()}\n\n"
                         return
 
-                    # Store new policy document in vector database for chatbot context
                     try:
                         await vector_store.store_policy_document(
                             policy_text=policy_text,
@@ -416,11 +384,9 @@ async def analyze_invoices_streaming(
                         logger.warning(
                             f"Failed to store policy in vector database: {e}"
                         )
-                        # Don't fail the entire process if policy storage fails
 
                 yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'completed', 'policy_length': len(policy_text)}).model_dump_json()}\n\n"
 
-                # Extract invoice files - save ZIP using pre-read content
                 zip_path = os.path.join(
                     temp_dir, sanitize_filename(zip_filename or "invoices.zip")
                 )
@@ -443,7 +409,6 @@ async def analyze_invoices_streaming(
                 analysis_results = []
                 processing_errors = []
 
-                # Yield initial progress
                 progress = InvoiceAnalysisProgress(
                     current_invoice=0,
                     total_invoices=total_invoices,
@@ -454,21 +419,17 @@ async def analyze_invoices_streaming(
                 )
                 yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
 
-                # Process each invoice with streaming
                 for idx, invoice_path in enumerate(invoice_files, 1):
                     filename = os.path.basename(invoice_path)
 
                     try:
-                        # Update progress
                         progress.current_invoice = idx
                         progress.current_filename = filename
                         progress.stage = "checking_duplicates"
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
 
-                        # Generate hash for the invoice file to check for duplicates
                         invoice_hash = await generate_file_hash_from_path(invoice_path)
 
-                        # Check if this invoice has already been processed for this employee
                         existing_invoice = await vector_store.check_invoice_exists(
                             invoice_hash, employee_name
                         )
@@ -476,7 +437,6 @@ async def analyze_invoices_streaming(
                         if existing_invoice:
                             yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.INVOICE_ANALYSIS, data={'filename': filename, 'status': 'duplicate_found', 'message': 'Invoice already processed, returning cached result'}).model_dump_json()}\n\n"
 
-                            # Return the existing analysis result
                             result_data = {
                                 "filename": filename,
                                 "status": existing_invoice.metadata.get("status"),
@@ -500,15 +460,12 @@ async def analyze_invoices_streaming(
                             analysis_results.append(result_data)
                             progress.processed_invoices += 1
 
-                            # Yield completed result
                             yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.RESULT, data=result_data).model_dump_json()}\n\n"
                             continue
 
-                        # Progress to text extraction since no duplicate found
                         progress.stage = "extracting_text"
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
 
-                        # Extract invoice text
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.INVOICE_EXTRACTION, data={'filename': filename, 'status': 'extracting'}).model_dump_json()}\n\n"
 
                         invoice_text = await pdf_processor.extract_text(invoice_path)
@@ -518,32 +475,26 @@ async def analyze_invoices_streaming(
 
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.INVOICE_EXTRACTION, data={'filename': filename, 'status': 'completed', 'text_length': len(invoice_text)}).model_dump_json()}\n\n"
 
-                        # Update progress
                         progress.stage = "analyzing"
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
 
-                        # Analyze invoice with streaming
                         analysis_result = None
                         async for chunk in llm_service.analyze_invoice_streaming(
                             invoice_text=invoice_text,
                             policy_text=policy_text,
                             employee_name=employee_name,
                         ):
-                            # Forward LLM streaming chunks
                             yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.INVOICE_ANALYSIS, data={**chunk['data'], 'filename': filename}).model_dump_json()}\n\n"
 
-                            # Check if analysis is completed
                             if chunk.get("data", {}).get("status") == "completed":
                                 analysis_result = chunk["data"]["result"]
 
                         if not analysis_result:
                             raise ValueError("Analysis did not complete successfully")
 
-                        # Update progress
                         progress.stage = "storing"
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
 
-                        # Store in vector database with file hash
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.VECTOR_STORAGE, data={'filename': filename, 'status': 'storing'}).model_dump_json()}\n\n"
 
                         await vector_store.store_invoice_analysis(
@@ -556,7 +507,6 @@ async def analyze_invoices_streaming(
 
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.VECTOR_STORAGE, data={'filename': filename, 'status': 'completed'}).model_dump_json()}\n\n"
 
-                        # Prepare result
                         result_data = {
                             "filename": filename,
                             "status": analysis_result.get("status"),
@@ -575,10 +525,8 @@ async def analyze_invoices_streaming(
 
                         analysis_results.append(result_data)
 
-                        # Yield individual result
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.RESULT, data=result_data).model_dump_json()}\n\n"
 
-                        # Update progress
                         progress.processed_invoices += 1
                         progress.stage = "completed"
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
@@ -588,12 +536,10 @@ async def analyze_invoices_streaming(
                         error_data = {"file": filename, "error": str(e)}
                         processing_errors.append(error_data)
 
-                        # Update progress
                         progress.failed_invoices += 1
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.ERROR, data=error_data).model_dump_json()}\n\n"
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
 
-                # Yield final completion
                 completion_data = {
                     "success": True,
                     "message": f"Processed {len(analysis_results)} invoices successfully",
@@ -634,7 +580,7 @@ async def analyze_invoices_streaming(
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Expose-Headers": "*",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "Transfer-Encoding": "chunked",  # Enable chunked transfer
+            "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
         },
     )

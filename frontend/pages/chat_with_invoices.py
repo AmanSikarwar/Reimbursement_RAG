@@ -71,7 +71,6 @@ def stream_chat_response(
         "chunks_received": 0,
     }
 
-    # Create placeholder for streaming content
     content_placeholder = st.empty()
 
     try:
@@ -103,22 +102,18 @@ def stream_chat_response(
                             docs_count = chunk_payload.get("retrieved_documents", 0)
                             query_type = chunk_payload.get("query_type", "unknown")
 
-                            # Show metadata info briefly
                             if docs_count > 0:
                                 with st.status(
-                                    f"📊 Found {docs_count} relevant documents ({query_type})",
+                                    f"Found {docs_count} relevant documents ({query_type})",
                                     state="running",
                                 ):
-                                    time.sleep(0.5)  # Brief pause to show the status
+                                    time.sleep(0.5)
 
                         elif chunk_type == "content":
                             accumulated_content += chunk_payload
                             response_data["content"] = accumulated_content
 
-                            # Update the content placeholder with markdown
-                            content_placeholder.markdown(
-                                accumulated_content + "▌"
-                            )  # Add cursor
+                            content_placeholder.markdown(accumulated_content + "▌")
 
                         elif chunk_type == "suggestions":
                             response_data["suggestions"] = chunk_payload
@@ -127,7 +122,6 @@ def stream_chat_response(
                             response_data["sources"] = chunk_payload
 
                         elif chunk_type == "done":
-                            # Remove cursor and finalize content
                             content_placeholder.markdown(accumulated_content)
                             break
 
@@ -138,7 +132,7 @@ def stream_chat_response(
                             break
 
                     except json.JSONDecodeError:
-                        continue  # Skip malformed JSON
+                        continue
 
     except Exception as e:
         st.error(f"❌ Streaming error: {str(e)}")
@@ -178,7 +172,6 @@ def display_suggestions(suggestions: List[str], session_id: str):
 
     st.subheader("💡 Suggested Questions")
 
-    # Display suggestions in columns for better layout
     cols = st.columns(min(len(suggestions), 2))
 
     for i, suggestion in enumerate(suggestions):
@@ -186,12 +179,10 @@ def display_suggestions(suggestions: List[str], session_id: str):
             if st.button(
                 suggestion, key=f"suggestion_{session_id}_{i}", use_container_width=True
             ):
-                # Add suggestion to chat history as user message
                 st.session_state.chat_history.append(
                     {"role": "user", "content": suggestion, "timestamp": time.time()}
                 )
 
-                # Process the suggestion
                 process_chat_message(suggestion, session_id)
                 st.rerun()
 
@@ -199,11 +190,9 @@ def display_suggestions(suggestions: List[str], session_id: str):
 def process_chat_message(query: str, session_id: str, filters: Optional[Dict] = None):
     """Process a chat message and add the response to chat history."""
 
-    # Stream the response
     with st.chat_message("assistant"):
         response_data = stream_chat_response(query, session_id, filters)
 
-    # Add assistant response to chat history
     st.session_state.chat_history.append(
         {
             "role": "assistant",
@@ -215,7 +204,6 @@ def process_chat_message(query: str, session_id: str, filters: Optional[Dict] = 
         }
     )
 
-    # Display sources and suggestions after the response
     if response_data["sources"]:
         display_sources(response_data["sources"])
 
@@ -226,25 +214,22 @@ def process_chat_message(query: str, session_id: str, filters: Optional[Dict] = 
 def main():
     """Main function for the Chat with Invoices page."""
 
-    # Header with iAI theme styling
     st.title("💬 Chat with Processed Invoices")
     st.subheader(
         "Ask questions about your processed invoices using natural language AI"
     )
 
-    # Quick metrics in header
-    if st.session_state.analysis_results:
-        results = st.session_state.analysis_results
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("✅ Processed", results.get("processed_invoices", 0))
-        with col2:
-            st.metric("❌ Failed", results.get("failed_invoices", 0))
-        with col3:
-            employee = results.get("employee_name", "Unknown")
-            st.metric("👤 Employee", employee[:15] if len(employee) > 15 else employee)
+    # if st.session_state.analysis_results:
+    #     results = st.session_state.analysis_results
+    #     col1, col2, col3 = st.columns(3)
+    #     with col1:
+    #         st.metric("✅ Processed", results.get("processed_invoices", 0))
+    #     with col2:
+    #         st.metric("❌ Failed", results.get("failed_invoices", 0))
+    #     with col3:
+    #         employee = results.get("employee_name", "Unknown")
+    #         st.metric("👤 Employee", employee[:15] if len(employee) > 15 else employee)
 
-    # Analysis context card
     if st.session_state.analysis_results:
         results = st.session_state.analysis_results
         with st.container():
@@ -254,7 +239,6 @@ def main():
                 f"{results.get('failed_invoices', 0)} failed"
             )
 
-    # Check if we have analysis results
     if not st.session_state.analysis_results:
         st.warning("⚠️ No invoice analysis results found.")
 
@@ -269,7 +253,6 @@ def main():
                 "**2. Ask Questions**\nOnce invoices are processed, you can ask questions about the results."
             )
 
-        # Check backend status
         from utils.streamlit_utils import check_backend_health
 
         health_status = check_backend_health()
@@ -288,61 +271,53 @@ def main():
                 st.rerun()
         return
 
-    # Create main layout: chat interface and controls
     main_chat_col, sidebar_col = st.columns([3, 1])
 
     # MAIN CHAT AREA (Left Column)
     with main_chat_col:
-        # Recent context at the top (only if there's history)
-        if len(st.session_state.chat_history) > 2:
-            recent_queries = [
-                msg
-                for msg in st.session_state.chat_history[-6:]
-                if msg["role"] == "user"
-            ]
-            if len(recent_queries) > 1:
-                with st.expander("🧠 Recent Context", expanded=False):
-                    st.write("Recent queries in this conversation:")
-                    for i, query in enumerate(recent_queries[-3:], 1):
-                        st.write(f"{i}. {query['content']}")
+        # if len(st.session_state.chat_history) > 2:
+        #     recent_queries = [
+        #         msg
+        #         for msg in st.session_state.chat_history[-6:]
+        #         if msg["role"] == "user"
+        #     ]
+        #     if len(recent_queries) > 1:
+        #         with st.expander("🧠 Recent Context", expanded=False):
+        #             st.write("Recent queries in this conversation:")
+        #             for i, query in enumerate(recent_queries[-3:], 1):
+        #                 st.write(f"{i}. {query['content']}")
 
-        # Chat history container
         chat_container = st.container()
         with chat_container:
-            # Welcome message for new users
             if len(st.session_state.chat_history) == 0:
                 st.markdown("""
-                ### 👋 Welcome to AI-Powered Invoice Chat!
+                ### Welcome to AI-Powered Invoice Chat!
                 
                 I'm your intelligent assistant here to help you explore and analyze your processed invoices. 
                 You can ask me questions like:
                 """)
 
-                # Example queries with better Streamlit components
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    st.info("� Show me all declined invoices")
-                    st.info("👥 Which employees have pending reimbursements?")
+                    st.info("Show me all declined invoices")
+                    st.info("Which employees have pending reimbursements?")
 
                 with col2:
-                    st.info("💰 What are the most expensive invoices?")
-                    st.info("📋 Summarize the analysis results")
+                    st.info("What are the most expensive invoices?")
+                    st.info("Summarize the analysis results")
 
                 st.success(
                     "💡 **Pro Tip:** Use the filters in the sidebar to narrow down results, then ask questions about specific data!"
                 )
 
-            # Display chat messages
             for message in st.session_state.chat_history:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
 
-                    # Display sources for assistant messages
                     if message["role"] == "assistant" and message.get("sources"):
                         display_sources(message["sources"])
 
-                    # Show metadata for context awareness
                     if message["role"] == "assistant" and message.get("metadata"):
                         metadata = message["metadata"]
                         if metadata.get("retrieved_documents", 0) > 0:
@@ -358,23 +333,18 @@ def main():
                                         f"**Filters Applied:** {metadata['filters_applied']}"
                                     )
 
-        # Chat input at the bottom of main area
         if prompt := st.chat_input("Ask a question about your invoices..."):
-            # Get current filters from sidebar
             filters = {}
             if "current_filters" in st.session_state:
                 filters = st.session_state.current_filters
 
-            # Add user message to chat history
             st.session_state.chat_history.append(
                 {"role": "user", "content": prompt, "timestamp": time.time()}
             )
 
-            # Display user message
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            # Process the message with filters
             process_chat_message(
                 prompt, st.session_state.chat_session_id, filters if filters else None
             )
@@ -382,14 +352,12 @@ def main():
 
     # SIDEBAR CONTROLS (Right Column)
     with sidebar_col:
-        # Search Filters at the top
         st.subheader("🔍 Search Filters")
 
-        # Employee name filter
         default_employee = ""
         if "auto_employee_filter" in st.session_state:
             default_employee = st.session_state.auto_employee_filter
-            del st.session_state.auto_employee_filter  # Use once
+            del st.session_state.auto_employee_filter
 
         employee_filter = st.text_input(
             "Employee Name",
@@ -406,8 +374,7 @@ def main():
             help="Filter by reimbursement status",
         )
 
-        # Amount range filters
-        with st.expander("💰 Amount Filters", expanded=False):
+        with st.expander("Amount Filters", expanded=False):
             min_amount = st.number_input(
                 "Minimum Amount", min_value=0.0, value=0.0, step=100.0
             )
@@ -415,7 +382,6 @@ def main():
                 "Maximum Amount", min_value=0.0, value=0.0, step=100.0
             )
 
-        # Build and store filters
         filters = {}
         if employee_filter:
             filters["employee_name"] = employee_filter
@@ -426,18 +392,16 @@ def main():
         if max_amount > 0:
             filters["max_amount"] = max_amount
 
-        # Store filters in session state
         st.session_state.current_filters = filters
 
-        # Show active filters
         if filters:
-            st.subheader("🏷️ Active Filters")
+            st.subheader("Active Filters")
             for key, value in filters.items():
                 st.text(f"{key.replace('_', ' ').title()}: {value}")
 
         # Clear filters button
         if st.button(
-            "🗑️ Clear Filters", use_container_width=True, key="clear_filters_btn"
+            "Clear Filters", use_container_width=True, key="clear_filters_btn"
         ):
             st.session_state.current_filters = {}
             st.rerun()
@@ -445,7 +409,7 @@ def main():
         st.markdown("---")
 
         # Chat statistics
-        st.subheader("📊 Chat Stats")
+        st.subheader("Chat Stats")
         total_messages = len(st.session_state.chat_history)
         assistant_messages = len(
             [m for m in st.session_state.chat_history if m["role"] == "assistant"]
@@ -457,7 +421,6 @@ def main():
         with col_b:
             st.metric("Q&A Pairs", assistant_messages)
 
-        # Clear chat button
         if st.button(
             "🗑️ Clear Chat",
             type="secondary",
@@ -470,7 +433,6 @@ def main():
 
         st.markdown("---")
 
-        # Quick analysis navigation
         st.subheader("🔗 Quick Actions")
         if st.button(
             "📄 Back to Analysis", use_container_width=True, key="back_to_analysis_btn"
@@ -487,21 +449,18 @@ def main():
                 help=f"Current analysis for: {employee}",
                 key="employee_filter_btn",
             ):
-                # Auto-fill employee filter
                 st.session_state.auto_employee_filter = employee
                 st.rerun()
 
-    # Example queries section - now at the bottom for better flow
     if len(st.session_state.chat_history) == 0:
         st.markdown("---")
         st.subheader("💡 Get Started - Try These Questions")
         st.markdown("Click on any example to begin chatting:")
 
-        # Organize examples by category
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("**� Analysis & Stats**")
+            st.markdown("**Analysis & Stats**")
             basic_queries = [
                 "Show me all declined invoices",
                 "What are the most expensive invoices?",
@@ -521,7 +480,7 @@ def main():
                     st.rerun()
 
         with col2:
-            st.markdown("**� Specific Queries**")
+            st.markdown("**Specific Queries**")
             specific_queries = [
                 "Which employees have the highest amounts?",
                 "What are the common policy violations?",
@@ -529,7 +488,6 @@ def main():
             ]
             for i, query in enumerate(specific_queries):
                 if st.button(query, key=f"specific_{i}", use_container_width=True):
-                    # Add to chat and process
                     st.session_state.chat_history.append(
                         {"role": "user", "content": query, "timestamp": time.time()}
                     )
@@ -540,7 +498,6 @@ def main():
                     )
                     st.rerun()
     else:
-        # For existing conversations, show suggestions more subtly
         with st.expander("💡 More Query Ideas", expanded=False):
             st.markdown("**Try asking about:**")
             suggestions = [

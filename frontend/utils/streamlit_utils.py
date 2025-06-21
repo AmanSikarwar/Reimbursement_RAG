@@ -176,7 +176,7 @@ def display_metrics_grid(metrics: Dict[str, Any], columns: int = 4):
                 st.metric(label, value)
 
 
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=300)
 def get_system_stats() -> Dict[str, Any]:
     """
     Get system statistics from the backend.

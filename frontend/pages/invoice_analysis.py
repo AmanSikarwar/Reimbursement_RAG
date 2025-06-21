@@ -50,14 +50,12 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
     """
     api_url = "http://localhost:8000/api/v1/analyze-invoices-stream"
 
-    # Prepare files for upload
     files = {
         "policy_file": (policy_file.name, policy_file.getvalue(), "application/pdf"),
         "invoices_zip": (invoices_zip.name, invoices_zip.getvalue(), "application/zip"),
     }
     data = {"employee_name": employee_name}
 
-    # Initialize response data
     response_data = {
         "metadata": {},
         "progress_updates": [],
@@ -68,7 +66,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
         "final_summary": {},
     }
 
-    # Create containers for real-time updates
     status_container = st.container()
     progress_container = st.container()
     individual_results_container = st.container()
@@ -84,7 +81,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
         st.subheader("Invoice Results")
         individual_results_placeholder = st.empty()
 
-    # Store individual results for immediate display
     individual_results = []
 
     start_time = time.time()
@@ -107,7 +103,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                         if not chunk_data.strip():
                             continue
 
-                        # Enhanced error detection for service unavailable errors
                         if (
                             "503 Service Unavailable" in chunk_data
                             or "The model is overloaded" in chunk_data
@@ -121,7 +116,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                             )
                             continue
 
-                        # Check for other HTTP error patterns
                         if chunk_data.startswith("Error:") and (
                             "Service Unavailable" in chunk_data
                             or "UNAVAILABLE" in chunk_data
@@ -135,7 +129,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                             )
                             continue
 
-                        # Try to parse as JSON
                         chunk = json.loads(chunk_data)
                         response_data["chunks_received"] += 1
 
@@ -143,7 +136,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                         chunk_payload = chunk.get("data", {})
                         response_data["processing_stages"].add(chunk_type)
 
-                        # Handle different chunk types
                         if chunk_type == "metadata":
                             response_data["metadata"] = chunk_payload
                             employee = chunk_payload.get("employee", "Unknown")
@@ -175,7 +167,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                                     f"📈 Processing {current}/{total}: {filename} ({stage})"
                                 )
 
-                                # Update session state progress
                                 st.session_state.analysis_progress = progress_value
 
                         elif chunk_type == "invoice_extraction":
@@ -227,7 +218,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                             response_data["invoice_results"].append(chunk_payload)
                             individual_results.append(chunk_payload)
 
-                            # Display individual result immediately
                             with individual_results_placeholder.container():
                                 display_individual_results(individual_results)
 
@@ -236,7 +226,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                             filename = chunk_payload.get("file", "Unknown file")
                             response_data["errors"].append(chunk_payload)
 
-                            # Enhanced error message handling
                             if (
                                 "parsing analysis" in error_msg
                                 and "503 Service Unavailable" in error_msg
@@ -270,7 +259,6 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                             break
 
                     except json.JSONDecodeError as e:
-                        # Enhanced JSON parsing error handling
                         if (
                             "503 Service Unavailable" in chunk_data
                             or "overloaded" in chunk_data
@@ -283,13 +271,11 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
                                 "Service overload caused parsing error"
                             )
                         else:
-                            # Log the parsing error but don't show to user unless it's critical
                             response_data["errors"].append(
                                 f"JSON parsing error: {str(e)[:100]}..."
                             )
-                        continue  # Skip malformed JSON
+                        continue
                     except Exception as e:
-                        # Catch any other unexpected errors in chunk processing
                         st.warning(f"⚠️ Unexpected error processing chunk: {str(e)}")
                         response_data["errors"].append(
                             f"Chunk processing error: {str(e)}"
@@ -332,23 +318,18 @@ def stream_analysis(employee_name: str, policy_file, invoices_zip) -> Dict[str, 
 def display_results(response_data: Dict[str, Any]):
     """Display the final analysis results in a formatted way."""
 
-    # Summary metrics
     final_summary = response_data.get("final_summary", {})
     if final_summary:
         st.subheader("Analysis Summary")
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Total Invoices", final_summary.get("total_invoices", 0))
         with col2:
             st.metric("Processed", final_summary.get("processed_invoices", 0))
         with col3:
             st.metric("Failed", final_summary.get("failed_invoices", 0))
-        with col4:
-            processing_time = final_summary.get("processing_time_seconds", 0)
-            st.metric("Processing Time", f"{processing_time:.1f}s")
 
-    # Detailed results
     results = response_data.get("invoice_results", [])
     if results:
         st.subheader("📋 Detailed Results")
@@ -370,7 +351,6 @@ def display_results(response_data: Dict[str, Any]):
         with col3:
             st.metric("Reimbursement Rate", f"{reimbursement_rate:.1f}%")
 
-        # Individual results
         for i, result in enumerate(results, 1):
             with st.expander(
                 f"{get_status_icon(result.get('status', ''))} {result.get('filename', 'Unknown')}"
@@ -410,10 +390,8 @@ def display_results(response_data: Dict[str, Any]):
 
                 st.write("**Reason:**", result.get("reason", "No reason provided"))
 
-    # Error summary with enhanced messaging
     errors = response_data.get("errors", [])
     if errors:
-        # Categorize errors
         service_errors = []
         parsing_errors = []
         timeout_errors = []
@@ -437,7 +415,6 @@ def display_results(response_data: Dict[str, Any]):
             else:
                 other_errors.append(error)
 
-        # Display categorized errors
         with st.expander(f"⚠️ Issues Encountered ({len(errors)})", expanded=False):
             if service_errors:
                 st.subheader("🚫 AI Service Issues")
@@ -503,7 +480,6 @@ def display_individual_results(results):
     if not results:
         return
 
-    # Create a table for the results
     for i, result in enumerate(results):
         filename = result.get("filename", "Unknown")
         status = result.get("status", "unknown")
@@ -512,7 +488,6 @@ def display_individual_results(results):
         currency = result.get("currency", "INR")
         reason = result.get("reason", "")
 
-        # Create expandable section for each result
         with st.expander(
             f"{get_status_icon(status)} {filename} - {status.replace('_', ' ').title()}",
             expanded=i == len(results) - 1,
@@ -532,14 +507,12 @@ def display_individual_results(results):
                 st.write("**Reason:**")
                 st.write(reason)
 
-            # Show policy violations if any
             violations = result.get("policy_violations", [])
             if violations:
                 st.write("**Policy Violations:**")
                 for violation in violations:
                     st.write(f"• {violation}")
 
-            # Show categories if any
             categories = result.get("categories", [])
             if categories:
                 st.write("**Categories:** " + ", ".join(categories).title())
@@ -548,11 +521,9 @@ def display_individual_results(results):
 def main():
     """Main function for the Invoice Analysis page."""
 
-    # Enhanced header with iAI branding
     st.title("📄 Automated Invoice Analysis")
     st.subheader("AI-powered invoice processing and reimbursement analysis")
 
-    # Show system status at the top if backend is offline
     from utils.streamlit_utils import check_backend_health
 
     health_status = check_backend_health()
@@ -569,7 +540,6 @@ def main():
                 "The backend provides the AI analysis capabilities for processing invoices."
             )
 
-    # Header with navigation hint
     col1, col2 = st.columns([3, 1])
     with col2:
         if st.session_state.analysis_results:
@@ -579,7 +549,6 @@ def main():
                 st.session_state.selected_page = "💬 Chat with Invoices"
                 st.rerun()
 
-    # Status indicator with standard metrics
     if st.session_state.analysis_results:
         results = st.session_state.analysis_results
         col1, col2, col3 = st.columns(3)
@@ -590,7 +559,6 @@ def main():
         with col3:
             st.metric("❌ Failed", results.get("failed_invoices", 0))
 
-        # Quick actions
         col1, col2, col3 = st.columns(3)
         with col1:
             if st.button(
@@ -615,33 +583,31 @@ def main():
 
         st.markdown("---")
 
-    # Input form
     if not st.session_state.analysis_results:
-        # Welcome section for new users
         if not st.session_state.get("show_upload_form", False):
             st.markdown("---")
-            st.subheader("🎯 Welcome to AI Invoice Analysis")
+            st.subheader("Welcome to AI Invoice Analysis")
 
             st.markdown("""
             This application uses **advanced AI technology** to automatically analyze invoice reimbursement requests 
             against your company's HR policies. Here's what it does:
             
-            **✨ Key Features:**
-            - 📄 **Smart PDF Processing**: Extracts text from invoices and policy documents
-            - 🤖 **AI Analysis**: Uses Gemini AI to analyze each invoice against HR policies  
-            - 💰 **Automatic Calculations**: Determines reimbursement amounts and policy compliance
-            - 💬 **Interactive Chat**: Ask questions about your processed invoices using natural language
-            - 📊 **Detailed Reports**: Get comprehensive analysis results with explanations
+            ** Key Features:**
+            - **Smart PDF Processing**: Extracts text from invoices and policy documents
+            - **AI Analysis**: Uses Gemini AI to analyze each invoice against HR policies
+            - **Automatic Calculations**: Determines reimbursement amounts and policy compliance
+            - **Interactive Chat**: Ask questions about your processed invoices using natural language
+            - **Detailed Reports**: Get comprehensive analysis results with explanations
             """)
 
             col1, col2 = st.columns(2)
             with col1:
                 st.info(
-                    "**📋 What You Need:**\n• Employee name\n• HR policy PDF file\n• ZIP file with invoice PDFs"
+                    "**What You Need:**\n• Employee name\n• HR policy PDF file\n• ZIP file with invoice PDFs"
                 )
             with col2:
                 st.success(
-                    "**🎉 What You Get:**\n• Automated analysis results\n• Reimbursement calculations\n• Policy violation reports"
+                    "**What You Get:**\n• Automated analysis results\n• Reimbursement calculations\n• Policy violation reports"
                 )
 
             st.markdown("---")
@@ -650,7 +616,7 @@ def main():
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 if st.button(
-                    "🚀 Get Started - Upload Documents",
+                    "Get Started - Upload Documents",
                     type="primary",
                     use_container_width=True,
                     key="get_started_btn",
@@ -658,11 +624,9 @@ def main():
                     st.session_state.show_upload_form = True
                     st.rerun()
 
-        # Upload form (shown after clicking get started or if already set to show)
         if st.session_state.get("show_upload_form", False):
-            st.subheader("📝 Analysis Configuration")
+            st.subheader("Analysis Configuration")
 
-            # Employee name input
             employee_name = st.text_input(
                 "Employee Name *",
                 placeholder="Enter the employee's full name",
@@ -670,7 +634,6 @@ def main():
                 key="employee_name_input",
             )
 
-            # Initialize session state for file uploads
             if "uploaded_policy" not in st.session_state:
                 st.session_state.uploaded_policy = None
             if "uploaded_zip" not in st.session_state:
@@ -679,33 +642,27 @@ def main():
             col1, col2 = st.columns(2)
 
             with col1:
-                # Policy file uploader
                 policy_file = st.file_uploader(
                     "HR Policy File *",
                     type=["pdf"],
                     help="Upload the HR reimbursement policy PDF file",
                     key="policy_uploader",
                 )
-                # Update session state when file is uploaded
                 if policy_file is not None:
                     st.session_state.uploaded_policy = policy_file
 
             with col2:
-                # Invoices zip uploader
                 invoices_zip = st.file_uploader(
                     "Invoices ZIP File *",
                     type=["zip"],
                     help="Upload a ZIP file containing all invoice PDFs",
                     key="zip_uploader",
                 )
-                # Update session state when file is uploaded
                 if invoices_zip is not None:
                     st.session_state.uploaded_zip = invoices_zip
 
-            # Simple, reliable validation - try multiple approaches
             name_valid = employee_name and len(employee_name.strip()) > 0
 
-            # Check file uploads - try different validation methods
             policy_valid = False
             zip_valid = False
 
@@ -727,10 +684,8 @@ def main():
             else:
                 active_zip_file = None
 
-            # Overall validation
             all_valid = name_valid and policy_valid and zip_valid
 
-            # Show missing fields if any
             if not all_valid:
                 missing_fields = []
                 if not name_valid:
@@ -743,9 +698,8 @@ def main():
                 if missing_fields:
                     st.info(f"ℹ️ Please provide: {', '.join(missing_fields)}")
 
-            # Submit button
             if st.button(
-                "🚀 Start Analysis",
+                "Start Analysis",
                 type="primary",
                 disabled=not all_valid,
                 use_container_width=True,
@@ -754,20 +708,16 @@ def main():
                 if all_valid:
                     st.info("🚀 Starting invoice analysis...")
 
-                    # Set progress indicators
                     st.session_state.analysis_in_progress = True
                     st.session_state.analysis_progress = 0.0
 
-                    # Stream the analysis using active files
                     response_data = stream_analysis(
                         employee_name, active_policy_file, active_zip_file
                     )
 
-                    # Clear progress indicators
                     st.session_state.analysis_in_progress = False
                     st.session_state.analysis_progress = 1.0
 
-                    # Store results in session state
                     st.session_state.analysis_results = {
                         "employee_name": employee_name,
                         "processed_invoices": len(
@@ -777,7 +727,6 @@ def main():
                         "response_data": response_data,
                     }
 
-                    # Clear uploaded files from session state
                     st.session_state.uploaded_policy = None
                     st.session_state.uploaded_zip = None
 
@@ -787,18 +736,16 @@ def main():
                         "❌ Please fill in all required fields before starting analysis."
                     )
         else:
-            # Show a small hint for users who want to skip the intro
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 if st.button(
-                    "📋 Skip Intro - Go to Upload",
+                    "Skip Intro - Go to Upload",
                     use_container_width=True,
                     key="skip_intro_btn",
                 ):
                     st.session_state.show_upload_form = True
                     st.rerun()
 
-    # Display results if available
     if st.session_state.analysis_results:
         st.markdown("---")
         response_data = st.session_state.analysis_results["response_data"]

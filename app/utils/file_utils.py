@@ -32,14 +32,12 @@ async def validate_file(file: UploadFile, allowed_extensions: List[str]) -> None
     Raises:
         HTTPException: If file validation fails
     """
-    # Check file size
     if file.size and file.size > settings.max_file_size_bytes:
         raise HTTPException(
             status_code=413,
             detail=f"File size exceeds maximum allowed size of {settings.MAX_FILE_SIZE}MB",
         )
 
-    # Check file extension
     if file.filename:
         file_extension = Path(file.filename).suffix.lower().lstrip(".")
         if file_extension not in allowed_extensions:
@@ -50,7 +48,6 @@ async def validate_file(file: UploadFile, allowed_extensions: List[str]) -> None
     else:
         raise HTTPException(status_code=400, detail="Filename is required")
 
-    # Check if file is empty
     if file.size == 0:
         raise HTTPException(status_code=400, detail="Empty files are not allowed")
 
@@ -72,20 +69,16 @@ async def save_uploaded_file(file: UploadFile, destination_dir: str) -> str:
         HTTPException: If file saving fails
     """
     try:
-        # Create destination directory if it doesn't exist
         os.makedirs(destination_dir, exist_ok=True)
 
-        # Generate safe filename
         safe_filename = sanitize_filename(file.filename or "unknown_file")
         file_path = os.path.join(destination_dir, safe_filename)
 
         logger.info(f"Attempting to save file: {file.filename} to {file_path}")
 
-        # Check if we can access the file's underlying file object
         if hasattr(file, "file") and hasattr(file.file, "read"):
-            # Direct file object access
             try:
-                file.file.seek(0)  # Reset position
+                file.file.seek(0)
                 content = file.file.read()
 
                 async with aiofiles.open(file_path, "wb") as f:
@@ -99,10 +92,8 @@ async def save_uploaded_file(file: UploadFile, destination_dir: str) -> str:
 
         # Fallback: Use FastAPI's async interface
         try:
-            # Reset file position
             await file.seek(0)
 
-            # Read file content
             content = await file.read()
 
             if not content:
@@ -110,7 +101,6 @@ async def save_uploaded_file(file: UploadFile, destination_dir: str) -> str:
                     status_code=400, detail=f"File {file.filename} appears to be empty"
                 )
 
-            # Write to destination
             async with aiofiles.open(file_path, "wb") as f:
                 await f.write(content)
 
@@ -120,7 +110,7 @@ async def save_uploaded_file(file: UploadFile, destination_dir: str) -> str:
         except Exception as async_error:
             logger.error(f"Async file read failed: {async_error}")
 
-            # Last resort: Try chunk reading
+            # Try chunk reading
             try:
                 await file.seek(0)
                 async with aiofiles.open(file_path, "wb") as f:
@@ -157,17 +147,14 @@ def sanitize_filename(filename: str) -> str:
     Returns:
         Sanitized filename
     """
-    # Remove or replace dangerous characters
     dangerous_chars = ["/", "\\", ":", "*", "?", '"', "<", ">", "|"]
     sanitized = filename
 
     for char in dangerous_chars:
         sanitized = sanitized.replace(char, "_")
 
-    # Remove leading/trailing whitespace and dots
     sanitized = sanitized.strip(" .")
 
-    # Ensure filename is not empty
     if not sanitized:
         sanitized = "unnamed_file"
 
@@ -192,10 +179,8 @@ async def extract_zip_file(zip_path: str, extract_dir: str) -> List[str]:
         pdf_files = []
 
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            # Get list of files in the ZIP
             file_list = zip_ref.namelist()
 
-            # Filter for PDF files
             pdf_file_names = [
                 f
                 for f in file_list
@@ -207,14 +192,11 @@ async def extract_zip_file(zip_path: str, extract_dir: str) -> List[str]:
                     status_code=400, detail="No PDF files found in the ZIP archive"
                 )
 
-            # Extract PDF files
             for pdf_name in pdf_file_names:
                 try:
-                    # Sanitize extracted filename
                     safe_name = sanitize_filename(os.path.basename(pdf_name))
                     extract_path = os.path.join(extract_dir, safe_name)
 
-                    # Extract the file
                     with (
                         zip_ref.open(pdf_name) as source,
                         open(extract_path, "wb") as target,
@@ -343,11 +325,9 @@ def is_valid_pdf(file_path: str) -> bool:
         True if the file is a valid PDF, False otherwise
     """
     try:
-        # Check file extension
         if get_file_extension(file_path) != "pdf":
             return False
 
-        # Check PDF magic number
         with open(file_path, "rb") as f:
             header = f.read(4)
             return header == b"%PDF"
@@ -421,8 +401,6 @@ async def generate_upload_file_hash(upload_file: UploadFile) -> str:
     Returns:
         SHA-256 hash string
     """
-    # Read the file content
     content = await upload_file.read()
-    # Reset file pointer to beginning
     await upload_file.seek(0)
     return await generate_file_hash(content)

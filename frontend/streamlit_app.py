@@ -9,7 +9,6 @@ import uuid
 
 import streamlit as st
 
-# Configure the page
 st.set_page_config(
     page_title="Invoice Reimbursement System",
     page_icon="📄",
@@ -17,11 +16,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Import pages and utilities
 try:
     from pages import chat_with_invoices, invoice_analysis
     from utils.streamlit_utils import check_backend_health
-    from utils.theme import apply_iai_theme
+    from utils.theme import apply_theme
 except ImportError as e:
     st.error(f"Import error: {e}")
     st.error(
@@ -32,10 +30,8 @@ except ImportError as e:
     )
     st.stop()
 
-# Apply iAI Solutions theme
-apply_iai_theme()
+apply_theme()
 
-# Initialize session state
 if "analysis_results" not in st.session_state:
     st.session_state.analysis_results = None
 
@@ -48,23 +44,18 @@ if "chat_history" not in st.session_state:
 if "selected_page" not in st.session_state:
     st.session_state.selected_page = "📄 Invoice Analysis"
 
-# Define pages dictionary for navigation
 pages = {
     "📄 Invoice Analysis": invoice_analysis,
     "💬 Chat with Invoices": chat_with_invoices,
 }
 
-# Create sidebar navigation
 with st.sidebar:
-    # Add logo placeholder and title with iAI styling
     st.markdown("### 🏢 Invoice Reimbursement")
 
     st.markdown("---")
 
-    # Navigation with menu buttons
     st.subheader("📋 Navigation")
 
-    # Invoice Analysis button with status badge
     analysis_badge = ""
     if st.session_state.analysis_results:
         processed = st.session_state.analysis_results.get("processed_invoices", 0)
@@ -81,7 +72,6 @@ with st.sidebar:
         st.session_state.selected_page = "📄 Invoice Analysis"
         st.rerun()
 
-    # Chat with Invoices button with message count badge
     chat_badge = ""
     if len(st.session_state.chat_history) > 0:
         chat_badge = f" ({len(st.session_state.chat_history)})"
@@ -97,15 +87,12 @@ with st.sidebar:
         st.session_state.selected_page = "💬 Chat with Invoices"
         st.rerun()
 
-    # Store selected page for the main content
     selected_page = st.session_state.selected_page
 
     st.markdown("---")
 
-    # System status
     st.subheader("🔌 System Status")
 
-    # Check backend connectivity
     health_status = check_backend_health()
 
     if health_status["status"] == "online":
@@ -120,7 +107,6 @@ with st.sidebar:
         st.error("❌ Backend Offline")
         st.info(health_status["message"])
 
-        # Add helpful quick start instructions
         with st.expander("🚀 Quick Start Backend", expanded=False):
             st.code("# Start the FastAPI backend server")
             st.code("cd /path/to/project")
@@ -133,7 +119,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Session info and quick actions
     st.subheader("📊 Session Info")
 
     col1, col2 = st.columns(2)
@@ -158,7 +143,6 @@ with st.sidebar:
             st.metric("❌ Failed", "0")
             st.metric("👤 Employee", "None")
 
-    # Quick navigation
     if st.session_state.analysis_results:
         st.markdown("**Quick Actions:**")
         if st.button(
@@ -172,7 +156,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Reset session
     if st.button(
         "🔄 Reset Session",
         type="secondary",
@@ -184,7 +167,6 @@ with st.sidebar:
         st.session_state.chat_session_id = str(uuid.uuid4())
         st.rerun()
 
-    # Add processing indicator in navigation
     if (
         "analysis_in_progress" in st.session_state
         and st.session_state.analysis_in_progress
@@ -192,7 +174,6 @@ with st.sidebar:
         st.info("🔄 Analysis in progress...")
         st.progress(st.session_state.get("analysis_progress", 0.0))
 
-# Run the selected page
 try:
     if selected_page in pages:
         pages[selected_page].main()
@@ -204,7 +185,6 @@ except Exception as e:
     if st.checkbox("Show detailed error information"):
         st.exception(e)
 
-    # Add helpful error recovery
     st.subheader("🔧 Troubleshooting")
     st.info("This error might be caused by:")
     st.write("• Backend service not running (FastAPI server on port 8000)")

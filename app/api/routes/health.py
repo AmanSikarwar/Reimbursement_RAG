@@ -1,12 +1,12 @@
 """
 Health check API routes.
 
-Provides comprehensive health monitoring endpoints for production monitoring.
+Provides comprehensive health monitoring endpoints for monitoring.
 """
 
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 
@@ -18,7 +18,6 @@ from app.services.vector_store import VectorStoreService
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Track application start time
 app_start_time = time.time()
 
 
@@ -45,7 +44,6 @@ async def comprehensive_health_check(
     services = []
     overall_status = HealthStatus.HEALTHY
 
-    # Check Vector Store
     try:
         start_time = time.time()
         await vector_store.health_check()
@@ -71,7 +69,6 @@ async def comprehensive_health_check(
         )
         overall_status = HealthStatus.UNHEALTHY
 
-    # Check LLM Service
     try:
         start_time = time.time()
         llm_service = LLMService()
@@ -98,17 +95,14 @@ async def comprehensive_health_check(
         )
         overall_status = HealthStatus.UNHEALTHY
 
-    # Check File System
     try:
         import os
 
         start_time = time.time()
 
-        # Test upload directory access
         upload_dir = settings.UPLOAD_DIRECTORY
         os.makedirs(upload_dir, exist_ok=True)
 
-        # Test file creation
         test_file = os.path.join(upload_dir, ".health_check")
         with open(test_file, "w") as f:
             f.write("health_check")
@@ -136,13 +130,12 @@ async def comprehensive_health_check(
         )
         overall_status = HealthStatus.UNHEALTHY
 
-    # Calculate uptime
     uptime = time.time() - app_start_time
 
     return HealthResponse(
         status=overall_status,
         version=settings.APP_VERSION,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         uptime_seconds=round(uptime, 2),
         services=services,
     )
@@ -158,7 +151,7 @@ async def quick_health_check() -> dict:
     """
     return {
         "status": "ok",
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(timezone.utc),
         "uptime": round(time.time() - app_start_time, 2),
     }
 
@@ -182,8 +175,12 @@ async def vector_store_health(
             "status": "healthy",
             "response_time_ms": round(response_time, 2),
             "collection_info": collection_info,
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(timezone.utc),
         }
     except Exception as e:
         logger.error(f"Vector store health check failed: {e}")
-        return {"status": "unhealthy", "error": str(e), "timestamp": datetime.utcnow()}
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc),
+        }

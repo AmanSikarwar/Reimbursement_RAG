@@ -52,16 +52,13 @@ class VectorStoreService:
         Also creates the collection if it doesn't exist.
         """
         try:
-            # Initialize Qdrant client
             self.client = QdrantClient(
                 url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY
             )
 
-            # Load embedding model
             self.embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
             self.vector_size = self.embedding_model.get_sentence_embedding_dimension()
 
-            # Create collection if it doesn't exist
             await self._create_collection_if_not_exists()
 
             self.logger.info("Vector store service initialized successfully")
@@ -71,73 +68,32 @@ class VectorStoreService:
             raise
 
     async def _create_collection_if_not_exists(self):
-        """Create the collection if it doesn't already exist with proper indexes."""
+        """Create the collection if it doesn't already exist."""
         if not self.client:
             raise ValueError("Qdrant client not initialized")
 
-        if not self.embedding_model:
-            raise ValueError("Embedding model not initialized")
-
         try:
-            # Check if collection exists using a more reliable method
-            try:
-                collections = self.client.get_collections()
-                collection_names = [col.name for col in collections.collections]
+            self.client.get_collection(self.collection_name)
+            self.logger.info(f"Collection already exists: {self.collection_name}")
+            await self._create_payload_indexes()
+            return
+        except Exception:
+            pass
 
-                if self.collection_name in collection_names:
-                    self.logger.info(
-                        f"Collection already exists: {self.collection_name}"
-                    )
-                    # Ensure indexes exist for existing collection
-                    await self._create_payload_indexes()
-                    return
+        if self.vector_size is None:
+            raise ValueError(
+                "Vector size not initialized. Ensure embedding model is loaded first."
+            )
 
-            except Exception as e:
-                self.logger.warning(f"Could not check existing collections: {e}")
-                # Try alternative method to check collection existence
-                try:
-                    self.client.get_collection(self.collection_name)
-                    self.logger.info(
-                        f"Collection already exists: {self.collection_name}"
-                    )
-                    # Ensure indexes exist for existing collection
-                    await self._create_payload_indexes()
-                    return
-                except Exception:
-                    # Collection doesn't exist, continue to create it
-                    pass
-
-            # Collection doesn't exist, create it
-            if self.vector_size is None:
-                raise ValueError(
-                    "Vector size not determined - embedding model not properly initialized"
-                )
-
-            try:
-                self.client.create_collection(
-                    collection_name=self.collection_name,
-                    vectors_config=VectorParams(
-                        size=self.vector_size, distance=Distance.COSINE
-                    ),
-                )
-                self.logger.info(f"Created collection: {self.collection_name}")
-
-                # Create payload indexes for filtering
-                await self._create_payload_indexes()
-
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    self.logger.info(
-                        f"Collection already exists: {self.collection_name}"
-                    )
-                    # Ensure indexes exist for existing collection
-                    await self._create_payload_indexes()
-                else:
-                    raise
-
-        except Exception as e:
-            self.logger.error(f"Error creating collection: {e}")
-            raise
+        # Create new collection
+        self.client.create_collection(
+            collection_name=self.collection_name,
+            vectors_config=VectorParams(
+                size=self.vector_size, distance=Distance.COSINE
+            ),
+        )
+        self.logger.info(f"Created collection: {self.collection_name}")
+        await self._create_payload_indexes()
 
     async def _create_payload_indexes(self):
         """Create payload indexes for efficient filtering."""
@@ -147,7 +103,6 @@ class VectorStoreService:
         try:
             from qdrant_client.http.models import PayloadSchemaType
 
-            # Create indexes for commonly filtered fields
             indexes_to_create = [
                 ("status", PayloadSchemaType.KEYWORD),
                 ("employee_name", PayloadSchemaType.KEYWORD),
@@ -178,13 +133,11 @@ class VectorStoreService:
                         self.logger.warning(
                             f"Failed to create index for {field_name}: {e}"
                         )
-                        # Continue with other indexes even if one fails
 
             self.logger.info("Payload indexes creation completed")
 
         except Exception as e:
             self.logger.error(f"Error creating payload indexes: {e}")
-            # Don't raise - indexes are for optimization, not critical for functionality
 
     def _generate_embedding(self, text: str) -> List[float]:
         """
@@ -207,7 +160,6 @@ class VectorStoreService:
             elif isinstance(embedding, (list, tuple)):
                 return [float(x) for x in embedding]
             else:
-                # Fallback for other types
                 return [float(x) for x in embedding]
         except Exception as e:
             self.logger.error(f"Error generating embedding: {e}")
@@ -230,7 +182,6 @@ class VectorStoreService:
             if not self.client:
                 raise ValueError("Qdrant client not initialized")
 
-            # Build filter for file hash and document type
             filter_conditions = Filter(
                 must=[
                     FieldCondition(key="file_hash", match=MatchValue(value=file_hash)),
@@ -238,7 +189,6 @@ class VectorStoreService:
                 ]
             )
 
-            # Search for documents with this file hash
             search_results = self.client.scroll(
                 collection_name=self.collection_name,
                 scroll_filter=filter_conditions,
@@ -247,14 +197,14 @@ class VectorStoreService:
                 with_vectors=False,
             )
 
-            if search_results[0]:  # Points found
-                point = search_results[0][0]  # Get first point
+            if search_results[0]:
+                point = search_results[0][0]
                 payload = point.payload or {}
 
                 return VectorDocument(
                     id=str(point.id),
                     content=payload.get("content", ""),
-                    embedding=[],  # Empty embedding for exists check
+                    embedding=[],
                     metadata=payload,
                 )
 
@@ -283,7 +233,6 @@ class VectorStoreService:
             if not self.client:
                 raise ValueError("Qdrant client not initialized")
 
-            # Build filter for file hash, document type, and employee
             filter_conditions = Filter(
                 must=[
                     FieldCondition(
@@ -298,7 +247,6 @@ class VectorStoreService:
                 ]
             )
 
-            # Search for documents with this file hash and employee
             search_results = self.client.scroll(
                 collection_name=self.collection_name,
                 scroll_filter=filter_conditions,
@@ -307,14 +255,14 @@ class VectorStoreService:
                 with_vectors=False,
             )
 
-            if search_results[0]:  # Points found
-                point = search_results[0][0]  # Get first point
+            if search_results[0]:
+                point = search_results[0][0]
                 payload = point.payload or {}
 
                 return VectorDocument(
                     id=str(point.id),
                     content=payload.get("content", ""),
-                    embedding=[],  # Empty embedding for exists check
+                    embedding=[],
                     metadata=payload,
                 )
 
@@ -348,10 +296,8 @@ class VectorStoreService:
             Document ID of the stored record
         """
         try:
-            # Generate unique document ID
             doc_id = str(uuid.uuid4())
 
-            # Prepare content for embedding (combine invoice text and analysis)
             content_for_embedding = f"""
             Invoice: {invoice_text}
             
@@ -361,18 +307,14 @@ class VectorStoreService:
             Categories: {", ".join(analysis_result.get("categories", []))}
             """
 
-            # Generate embedding
             embedding = await asyncio.get_event_loop().run_in_executor(
                 None, self._generate_embedding, content_for_embedding
             )
 
-            # Prepare metadata - ensure enum values are converted to strings
             status_value = analysis_result.get("status", "")
-            # Convert enum to string value if needed
             if hasattr(status_value, "value"):
                 status_value = status_value.value
             elif str(status_value).startswith("ReimbursementStatus."):
-                # Handle the case where it's stored as ReimbursementStatus.DECLINED
                 status_value = str(status_value).split(".")[-1].lower()
 
             metadata = {
@@ -389,10 +331,9 @@ class VectorStoreService:
                 "policy_violations": analysis_result.get("policy_violations", []),
                 "date": datetime.now(timezone.utc).isoformat(),
                 "doc_type": "invoice_analysis",
-                "file_hash": file_hash,  # Add file hash to metadata
+                "file_hash": file_hash,
             }
 
-            # Create point for storage
             point = PointStruct(
                 id=doc_id,
                 vector=embedding,
@@ -403,7 +344,6 @@ class VectorStoreService:
                 },
             )
 
-            # Store in Qdrant
             if not self.client:
                 raise ValueError("Qdrant client not initialized")
             self.client.upsert(collection_name=self.collection_name, points=[point])
@@ -435,17 +375,14 @@ class VectorStoreService:
             List of search results with documents and scores
         """
         try:
-            # Generate query embedding
             query_embedding = await asyncio.get_event_loop().run_in_executor(
                 None, self._generate_embedding, query_text
             )
 
-            # Build filter conditions
             filter_conditions = None
             if filters:
                 filter_conditions = self._build_filter_conditions(filters)
 
-            # Perform search using the new query_points method
             if not self.client:
                 raise ValueError("Qdrant client not initialized")
 
@@ -458,14 +395,13 @@ class VectorStoreService:
                 with_payload=True,
             )
 
-            # Convert to SearchResult objects
             results = []
             for result in search_results.points:
                 payload = result.payload or {}
                 doc = VectorDocument(
                     id=str(result.id),
                     content=payload.get("content", ""),
-                    embedding=query_embedding,  # Use query embedding as placeholder
+                    embedding=query_embedding,
                     metadata=payload,
                 )
 
@@ -491,7 +427,6 @@ class VectorStoreService:
         """
         conditions = []
 
-        # Employee name filter
         if "employee_name" in filters and filters["employee_name"]:
             conditions.append(
                 FieldCondition(
@@ -500,14 +435,10 @@ class VectorStoreService:
                 )
             )
 
-        # Status filter
         if "status" in filters and filters["status"]:
             conditions.append(
                 FieldCondition(key="status", match=MatchValue(value=filters["status"]))
             )
-
-        # Date range filters would require more complex conditions
-        # For now, we'll keep it simple with exact matches
 
         return Filter(must=conditions) if conditions else None
 
@@ -537,15 +468,12 @@ class VectorStoreService:
                 payload = point.payload or {}
                 vector = point.vector
 
-                # Handle vector data properly
                 embedding: List[float] = []
                 if vector:
                     if isinstance(vector, dict):
-                        # Handle named vectors
                         first_vector = list(vector.values())[0] if vector else []
                         embedding = self._flatten_to_float_list(first_vector)
                     elif isinstance(vector, list):
-                        # Handle regular vectors
                         embedding = self._flatten_to_float_list(vector)
                     else:
                         embedding = []
@@ -604,9 +532,9 @@ class VectorStoreService:
             return {
                 "collection_name": self.collection_name,
                 "total_documents": info.points_count,
-                "vector_size": self.vector_size,  # Use our stored value
-                "distance_metric": "cosine",  # We know we use cosine
-                "status": "ready",  # Simplified status
+                "vector_size": self.vector_size,
+                "distance_metric": "cosine",
+                "status": "ready",
             }
 
         except Exception as e:
@@ -627,10 +555,8 @@ class VectorStoreService:
             raise Exception("Vector store client not initialized")
 
         try:
-            # Test connection by listing collections
             collections = self.client.get_collections()
 
-            # Test collection access
             collection_info = self.client.get_collection(self.collection_name)
 
             return {
@@ -681,21 +607,16 @@ class VectorStoreService:
         if isinstance(data, list):
             for item in data:
                 if isinstance(item, list):
-                    # Recursive flatten for nested lists
                     result.extend(self._flatten_to_float_list(item))
                 else:
-                    # Convert individual items to float
                     try:
                         result.append(float(item))
                     except (ValueError, TypeError):
-                        # Skip invalid values
                         continue
         else:
-            # Single value
             try:
                 result.append(float(data))
             except (ValueError, TypeError):
-                # Skip invalid values
                 pass
         return result
 
@@ -719,25 +640,21 @@ class VectorStoreService:
             Document ID of the stored policy
         """
         try:
-            # Generate unique document ID for policy
             doc_id = f"policy_{policy_name}_{str(uuid.uuid4())[:8]}"
 
-            # Generate embedding for policy text
             embedding = await asyncio.get_event_loop().run_in_executor(
                 None, self._generate_embedding, policy_text
             )
 
-            # Prepare metadata for policy document
             metadata = {
                 "doc_type": "policy",
                 "policy_name": policy_name,
                 "organization": organization,
                 "date": datetime.now(timezone.utc).isoformat(),
                 "content_type": "hr_reimbursement_policy",
-                "file_hash": file_hash,  # Add file hash to metadata
+                "file_hash": file_hash,
             }
 
-            # Create point for storage
             point = PointStruct(
                 id=doc_id,
                 vector=embedding,
@@ -747,7 +664,6 @@ class VectorStoreService:
                 },
             )
 
-            # Store in Qdrant
             if not self.client:
                 raise ValueError("Qdrant client not initialized")
             self.client.upsert(collection_name=self.collection_name, points=[point])
@@ -780,12 +696,10 @@ class VectorStoreService:
             if not self.client or not self.embedding_model:
                 raise ValueError("Vector store not properly initialized")
 
-            # Generate embedding for query
             query_embedding = await asyncio.get_event_loop().run_in_executor(
                 None, self._generate_embedding, query_text
             )
 
-            # Create filter for policy documents only
             policy_filter = Filter(
                 must=[
                     FieldCondition(
@@ -795,7 +709,6 @@ class VectorStoreService:
                 ]
             )
 
-            # Search for relevant policy content
             search_results = self.client.search(
                 collection_name=self.collection_name,
                 query_vector=query_embedding,
@@ -804,14 +717,13 @@ class VectorStoreService:
                 score_threshold=score_threshold,
             )
 
-            # Convert to SearchResult objects
             results = []
             for result in search_results:
                 payload = result.payload or {}
                 doc = VectorDocument(
                     id=str(result.id),
                     content=payload.get("content", ""),
-                    embedding=[],  # Empty embedding for search results
+                    embedding=[],
                     metadata=payload,
                 )
                 results.append(SearchResult(document=doc, score=result.score))
@@ -832,92 +744,17 @@ class VectorStoreService:
             True if policy context is available
         """
         try:
-            # Check if we have any policy documents
             policy_results = await self.search_policy_context("reimbursement", limit=1)
 
             if policy_results:
                 self.logger.info("Policy documents already available in vector store")
                 return True
 
-            # No policy documents found, store default policy
-            self.logger.info("No policy documents found, storing default policy...")
+            self.logger.error("No policy documents found")
 
-            default_policy = """
-HR REIMBURSEMENT POLICY
-
-1. ELIGIBLE EXPENSES
-   - Business travel expenses (flights, accommodation, meals)
-   - Transportation costs (taxi, uber, public transport, mileage reimbursement)
-   - Office supplies and equipment necessary for work
-   - Client entertainment within approved limits
-   - Professional development, training, and conferences
-   - Communication expenses (phone, internet for business use)
-   - Parking fees and tolls for business travel
-   - Medical expenses for business travel
-
-2. NON-REIMBURSABLE EXPENSES
-   - Alcoholic beverages (except for pre-approved client entertainment)
-   - Personal expenses unrelated to business
-   - Traffic fines, parking tickets, and penalties
-   - Entertainment for personal purposes
-   - Luxury items beyond business necessity
-   - Personal meals when not traveling
-   - Personal vehicle maintenance and repairs
-   - Tips exceeding 20% of the bill
-
-3. SPENDING LIMITS
-   - Meals: $50 per day for domestic travel, $75 per day for international travel
-   - Accommodation: Up to $200 per night domestic, $300 per night international
-   - Transportation: Economy class for flights under 6 hours, reasonable taxi/uber costs
-   - Office supplies: Up to $500 per month per employee
-   - Client entertainment: Up to $100 per occasion, requires pre-approval
-   - Training/conferences: Up to $2000 per year per employee
-
-4. DOCUMENTATION REQUIREMENTS
-   - Original receipts required for all expenses over $25
-   - Business purpose must be clearly stated for each expense
-   - All expenses must be submitted within 30 days of incurrence
-   - Credit card statements alone are not sufficient documentation
-   - For mileage reimbursement: start/end locations and business purpose required
-   - Foreign currency receipts must include exchange rate information
-
-5. APPROVAL PROCESS
-   - Expenses under $100: Automatic approval with valid receipt and business purpose
-   - Expenses $100-$500: Direct manager approval required
-   - Expenses over $500: Senior management approval required
-   - All international travel: Pre-approval required before travel
-   - Client entertainment: Pre-approval required regardless of amount
-   - Training/conference expenses: Department head approval required
-
-6. PAYMENT PROCESSING
-   - Approved reimbursements processed within 5-7 business days
-   - Direct deposit to employee's registered bank account
-   - Rejected expenses returned with detailed explanation
-   - Partial reimbursements possible when some items are non-compliant
-   - International reimbursements may take 10-14 business days
-
-7. POLICY VIOLATIONS AND CONSEQUENCES
-   - First violation: Warning and mandatory policy training
-   - Second violation: Written warning and probationary period
-   - Repeated violations: Progressive disciplinary action up to termination
-   - Fraudulent claims: Immediate termination and potential legal action
-   - Violations include: false documentation, inflated amounts, personal expenses claimed as business
-
-8. SPECIAL CIRCUMSTANCES
-   - Emergency expenses: May be approved retroactively with proper justification
-   - Out-of-policy expenses: Require exceptional approval from senior management
-   - Recurring expenses: Can be set up for automatic monthly processing
-   - Group expenses: One person can submit for group with itemized breakdown
-            """
-
-            doc_id = await self.store_policy_document(
-                policy_text=default_policy,
-                policy_name="HR_Reimbursement_Policy_Comprehensive",
-                organization="Company",
+            raise ValueError(
+                "No policy documents found in vector store. Please upload a policy document."
             )
-
-            self.logger.info(f"Stored default policy document with ID: {doc_id}")
-            return True
 
         except Exception as e:
             self.logger.error(f"Error ensuring policy context: {e}")

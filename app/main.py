@@ -1,12 +1,10 @@
 """
 Main FastAPI application module.
 
-This module sets up the FastAPI application with all necessary configurations,
-middleware, and route handlers.
+This module sets up the FastAPI application with all necessary configurations and route handlers.
 """
 
 import logging
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -16,11 +14,6 @@ from fastapi.responses import JSONResponse
 from app.api.routes import chatbot, health, invoice_analysis
 from app.core.config import settings
 from app.core.logging_config import setup_logging
-from app.middleware.security import (
-    RateLimitMiddleware,
-    RequestValidationMiddleware,
-    SecurityHeadersMiddleware,
-)
 from app.services.vector_store import VectorStoreService
 
 
@@ -31,28 +24,26 @@ async def lifespan(app: FastAPI):
 
     Handles startup and shutdown events for the FastAPI application.
     """
-    # Startup
     setup_logging()
     logger = logging.getLogger(__name__)
-    logger.info("Starting Invoice Reimbursement System")
 
-    # Initialize vector store
+    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info(f"Debug mode: {settings.DEBUG}")
+
     vector_store = VectorStoreService()
     await vector_store.initialize()
     app.state.vector_store = vector_store
 
-    # Create upload directory if it doesn't exist
-    os.makedirs(settings.UPLOAD_DIRECTORY, exist_ok=True)
+    upload_path = settings.get_upload_path()
+    logger.info(f"Upload directory: {upload_path}")
 
     logger.info("Application startup complete")
 
     yield
 
-    # Shutdown
-    logger.info("Shutting down Invoice Reimbursement System")
+    logger.info(f"Shutting down {settings.APP_NAME}")
 
 
-# Create FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
@@ -60,14 +51,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add security middleware
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(
-    RateLimitMiddleware, requests_per_minute=settings.RATE_LIMIT_REQUESTS
-)
-app.add_middleware(RequestValidationMiddleware)
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
@@ -115,7 +99,6 @@ async def health_check():
     return {"status": "healthy", "version": settings.APP_VERSION}
 
 
-# Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(invoice_analysis.router, prefix="/api/v1", tags=["invoice-analysis"])
 app.include_router(chatbot.router, prefix="/api/v1", tags=["chatbot"])

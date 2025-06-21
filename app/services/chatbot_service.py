@@ -7,7 +7,7 @@ functionality by combining vector search with LLM responses.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.models.schemas import ChatMessage, DocumentSource, SearchFilters
@@ -39,10 +39,9 @@ class ChatbotService:
 
     async def initialize(self):
         """
-        Initialize the chatbot service and ensure policy context is available.
+        Initialize the chatbot service.
         """
         try:
-            # Ensure policy documents are available in the vector store
             policy_available = await self.vector_store.ensure_policy_context()
 
             if policy_available:
@@ -76,21 +75,16 @@ class ChatbotService:
         self.logger.info(f"Processing query: {query[:100]}...")
 
         try:
-            # Analyze query to determine search strategy
             query_analysis = self._analyze_query(query, filters)
 
-            # Retrieve relevant documents (invoices)
             retrieved_docs = await self._retrieve_documents(
                 query, query_analysis["filters"], query_analysis["limit"]
             )
 
-            # Always include policy context for comprehensive responses
             policy_context = await self._retrieve_policy_context(query)
 
-            # Combine invoice documents and policy context
             all_context_docs = retrieved_docs + policy_context
 
-            # Generate response using LLM with combined context
             response = await self.llm_service.generate_chat_response(
                 query=query,
                 context_documents=all_context_docs,
@@ -99,14 +93,12 @@ class ChatbotService:
                 ),
             )
 
-            # Generate related query suggestions
             suggestions = await self.llm_service.generate_query_suggestions(
                 original_query=query,
                 context_documents=all_context_docs,
                 query_type=query_analysis["type"],
             )
 
-            # Prepare sources information (separate invoice and policy sources)
             invoice_sources = self._prepare_sources(retrieved_docs)
             policy_sources = self._prepare_sources(policy_context)
 
@@ -159,21 +151,16 @@ class ChatbotService:
         start_time = datetime.now()
 
         try:
-            # Analyze query to determine search strategy
             query_analysis = self._analyze_query(query, filters)
 
-            # Retrieve relevant documents (invoices)
             retrieved_docs = await self._retrieve_documents(
                 query, query_analysis["filters"], query_analysis["limit"]
             )
 
-            # Always include policy context for comprehensive responses
             policy_context = await self._retrieve_policy_context(query)
 
-            # Combine invoice documents and policy context
             all_context_docs = retrieved_docs + policy_context
 
-            # Prepare metadata
             metadata = {
                 "sources": self._prepare_sources(retrieved_docs),
                 "policy_sources": self._prepare_sources(policy_context),
@@ -186,14 +173,11 @@ class ChatbotService:
                 ),
             }
 
-            # Yield metadata first
             yield {"type": "metadata", "data": metadata}
 
-            # Track streaming performance
             chunk_count = 0
             response_start_time = datetime.now()
 
-            # Generate streaming response using LLM with combined context
             async for chunk in self.llm_service.generate_chat_response_streaming(
                 query=query,
                 context_documents=all_context_docs,
@@ -204,7 +188,6 @@ class ChatbotService:
                 chunk_count += 1
                 yield {"type": "content", "data": chunk}
 
-            # Calculate response time
             response_time = int(
                 (datetime.now() - response_start_time).total_seconds() * 1000
             )
@@ -212,7 +195,6 @@ class ChatbotService:
                 f"Streaming response completed: {chunk_count} chunks in {response_time}ms"
             )
 
-            # Generate suggestions at the end (with timeout protection)
             try:
                 # Use asyncio.wait_for to prevent hanging on suggestions
                 suggestions = await asyncio.wait_for(
@@ -221,7 +203,7 @@ class ChatbotService:
                         context_documents=all_context_docs,
                         query_type=query_analysis["type"],
                     ),
-                    timeout=10.0,  # 10 second timeout
+                    timeout=10.0,
                 )
 
                 yield {"type": "suggestions", "data": suggestions}
@@ -238,7 +220,6 @@ class ChatbotService:
                 }
             except Exception as e:
                 self.logger.error(f"Error generating suggestions: {e}")
-                # Yield fallback suggestions
                 yield {
                     "type": "suggestions",
                     "data": [
@@ -249,7 +230,6 @@ class ChatbotService:
                     ],
                 }
 
-            # Yield completion signal with performance metrics
             total_time = int((datetime.now() - start_time).total_seconds() * 1000)
             yield {
                 "type": "done",
@@ -282,10 +262,8 @@ class ChatbotService:
         """
         query_lower = query.lower()
 
-        # Initialize analysis result
         analysis = {"type": "general", "filters": {}, "limit": 10}
 
-        # Apply explicit filters if provided
         if filters:
             if filters.employee_name:
                 analysis["filters"]["employee_name"] = filters.employee_name
@@ -295,24 +273,17 @@ class ChatbotService:
                 analysis["filters"]["status"] = filters.status.value
                 analysis["type"] = "status_filter"
 
-        # Detect query patterns for implicit filtering
-
-        # Employee name detection
         if "for " in query_lower or "by " in query_lower:
-            # Simple pattern matching - in production, use NER
             words = query_lower.split()
             for i, word in enumerate(words):
                 if word in ["for", "by"] and i + 1 < len(words):
-                    # Extract potential employee name (next 1-2 words)
                     potential_name = " ".join(words[i + 1 : i + 3]).title()
-                    # Clean up punctuation marks from the name
                     potential_name = potential_name.strip(".,!?:;")
-                    if len(potential_name) > 2:  # Basic validation
+                    if len(potential_name) > 2:
                         analysis["filters"]["employee_name"] = potential_name
                         analysis["type"] = "employee_specific"
                     break
 
-        # Status detection
         status_keywords = {
             "declined": "declined",
             "rejected": "declined",
@@ -330,7 +301,6 @@ class ChatbotService:
                     analysis["type"] = "status_filter"
                 break
 
-        # Adjust limit based on query type
         if "all" in query_lower or "list" in query_lower:
             analysis["limit"] = 50
         elif "few" in query_lower or "some" in query_lower:
@@ -353,11 +323,8 @@ class ChatbotService:
             List of retrieved documents
         """
         try:
-            # Adjust score threshold based on whether filters are applied
-            # When filters are used, similarity scores tend to be lower
             score_threshold = 0.1 if filters else 0.3
 
-            # Perform vector search
             search_results = await self.vector_store.search_similar_invoices(
                 query_text=query,
                 filters=filters,
@@ -365,7 +332,6 @@ class ChatbotService:
                 score_threshold=score_threshold,
             )
 
-            # Convert search results to document format
             documents = []
             for result in search_results:
                 doc_dict = {
@@ -400,7 +366,6 @@ class ChatbotService:
 
         formatted = []
 
-        # Keep last 6 messages (3 exchanges) for better context
         recent_messages = conversation_history[-6:]
 
         for msg in recent_messages:
@@ -420,10 +385,9 @@ class ChatbotService:
         """
         sources = []
 
-        for doc in documents[:5]:  # Limit to top 5 sources
+        for doc in documents[:10]:
             metadata = doc.get("metadata", {})
 
-            # Create excerpt from content
             content = doc.get("content", "")
             excerpt = content[:200] + "..." if len(content) > 200 else content
 
@@ -449,11 +413,10 @@ class ChatbotService:
         try:
             collection_stats = await self.vector_store.get_collection_stats()
 
-            # In a real implementation, you might want to query for more detailed stats
             return {
                 "total_invoices": collection_stats.get("total_documents", 0),
                 "collection_status": collection_stats.get("status", "unknown"),
-                "last_updated": datetime.utcnow().isoformat(),
+                "last_updated": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:
@@ -480,7 +443,7 @@ class ChatbotService:
                 query_text=f"invoices for {employee_name}",
                 filters=filters,
                 limit=limit,
-                score_threshold=0.1,  # Very low threshold for employee search
+                score_threshold=0.1,
             )
 
             return [
@@ -546,7 +509,6 @@ class ChatbotService:
         """
         query_lower = query.lower()
 
-        # Keywords that suggest policy-related queries
         policy_keywords = [
             "policy",
             "rule",
@@ -587,15 +549,12 @@ class ChatbotService:
             List of policy document excerpts
         """
         try:
-            # Search for relevant policy information with a lower threshold
-            # to ensure we always get some policy context when available
             policy_results = await self.vector_store.search_policy_context(
                 query_text=query,
-                limit=2,  # Reduced to 2 to avoid overwhelming the context
-                score_threshold=0.1,  # Lower threshold to get more context
+                limit=2,
+                score_threshold=0.1,
             )
 
-            # Convert to document format
             policy_docs = []
             for result in policy_results:
                 doc_dict = {
@@ -624,24 +583,20 @@ class ChatbotService:
             Dictionary containing context statistics and information
         """
         try:
-            # Get collection stats
             stats = await self.vector_store.get_collection_stats()
 
-            # Count invoice documents
             invoice_results = await self.vector_store.search_similar_invoices(
                 query_text="invoice analysis",
-                limit=1000,  # High limit to get count
+                limit=1000,
                 score_threshold=0.0,
             )
 
-            # Count policy documents
             policy_results = await self.vector_store.search_policy_context(
                 query_text="policy",
-                limit=1000,  # High limit to get count
+                limit=1000,
                 score_threshold=0.0,
             )
 
-            # Get unique employees from invoice data
             employees = set()
             statuses = {"fully_reimbursed": 0, "partially_reimbursed": 0, "declined": 0}
             total_amount = 0.0

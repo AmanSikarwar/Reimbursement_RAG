@@ -36,9 +36,6 @@ class InvoiceAnalysisRequest(BaseModel):
 
     employee_name: str = Field(..., description="Name of the employee")
 
-    class Config:
-        json_schema_extra = {"example": {"employee_name": "John Doe"}}
-
 
 class LLMInvoiceAnalysisResponse(BaseModel):
     """
@@ -96,7 +93,6 @@ class LLMInvoiceAnalysisResponse(BaseModel):
         """Validate expense categories."""
         if not v or len(v) == 0:
             raise ValueError("At least one expense category must be provided")
-        # Clean up categories
         return [cat.strip().lower() for cat in v if cat.strip()]
 
     @field_validator("reimbursement_amount")
@@ -106,19 +102,6 @@ class LLMInvoiceAnalysisResponse(BaseModel):
         if "total_amount" in info.data and v > info.data["total_amount"]:
             raise ValueError("Reimbursement amount cannot exceed total amount")
         return v
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "status": "partially_reimbursed",
-                "reason": "Hotel expenses approved but alcohol charges are not covered under company policy",
-                "total_amount": 2500.0,
-                "reimbursement_amount": 2000.0,
-                "currency": "INR",
-                "categories": ["accommodation", "meals"],
-                "policy_violations": ["Alcohol expenses not reimbursable"],
-            }
-        }
 
 
 class InvoiceAnalysisResult(BaseModel):
@@ -172,19 +155,6 @@ class InvoiceAnalysisResponse(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc),
         description="Response timestamp",
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": True,
-                "message": "Processed 3 invoices successfully",
-                "employee_name": "John Doe",
-                "total_invoices": 3,
-                "processed_invoices": 3,
-                "failed_invoices": 0,
-                "timestamp": "2024-01-15T10:30:00Z",
-            }
-        }
 
 
 # Chatbot Models
@@ -240,15 +210,6 @@ class ChatRequest(BaseModel):
         True, description="Whether to include source documents in response"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "Show me all declined invoices for John Doe",
-                "session_id": "user123",
-                "include_sources": True,
-            }
-        }
-
 
 class DocumentSource(BaseModel):
     """Model for document source information."""
@@ -286,22 +247,6 @@ class ChatResponse(BaseModel):
         description="Response timestamp",
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "response": "I found 2 declined invoices for John Doe...",
-                "session_id": "user123",
-                "retrieved_documents": 2,
-                "query_type": "employee_specific",
-                "suggestions": [
-                    "Show me approved invoices for John Doe",
-                    "What was the total amount of declined invoices?",
-                    "Which invoices had policy violations?",
-                ],
-                "timestamp": "2024-01-15T10:30:00Z",
-            }
-        }
-
 
 # Vector Store Models
 class VectorDocument(BaseModel):
@@ -311,9 +256,6 @@ class VectorDocument(BaseModel):
     content: str = Field(..., description="Document content")
     embedding: List[float] = Field(..., description="Vector embedding")
     metadata: Dict[str, Any] = Field(..., description="Document metadata")
-
-    class Config:
-        arbitrary_types_allowed = True
 
 
 class SearchQuery(BaseModel):
@@ -332,9 +274,6 @@ class SearchResult(BaseModel):
 
     document: VectorDocument = Field(..., description="Retrieved document")
     score: float = Field(..., description="Similarity score")
-
-    class Config:
-        arbitrary_types_allowed = True
 
 
 # Streaming Models
@@ -358,15 +297,6 @@ class StreamingChunk(BaseModel):
         description="Chunk timestamp",
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "type": "content",
-                "data": "This is a streaming response chunk...",
-                "timestamp": "2024-06-20T10:30:00Z",
-            }
-        }
-
 
 class StreamingMetadata(BaseModel):
     """Model for streaming metadata chunk."""
@@ -382,16 +312,6 @@ class StreamingMetadata(BaseModel):
         None, description="Filters that were applied"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "sources": [],
-                "retrieved_documents": 2,
-                "query_type": "employee_specific",
-                "filters_applied": {"employee_name": "John Doe"},
-            }
-        }
-
 
 class ChatStreamRequest(BaseModel):
     """Request model for streaming chatbot interaction."""
@@ -406,15 +326,6 @@ class ChatStreamRequest(BaseModel):
     include_sources: bool = Field(
         True, description="Whether to include source documents in response"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "Show me all declined invoices for John Doe",
-                "session_id": "user123",
-                "include_sources": True,
-            }
-        }
 
 
 # Invoice Analysis Streaming Models
@@ -444,23 +355,11 @@ class InvoiceAnalysisStreamingChunk(BaseModel):
         description="Chunk timestamp",
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "type": "invoice_analysis",
-                "data": {"filename": "invoice1.pdf", "status": "processing"},
-                "timestamp": "2024-06-20T10:30:00Z",
-            }
-        }
-
 
 class InvoiceAnalysisStreamRequest(BaseModel):
     """Request model for streaming invoice analysis."""
 
     employee_name: str = Field(..., description="Name of the employee")
-
-    class Config:
-        json_schema_extra = {"example": {"employee_name": "John Doe"}}
 
 
 class InvoiceAnalysisProgress(BaseModel):
@@ -475,20 +374,8 @@ class InvoiceAnalysisProgress(BaseModel):
     )
     stage: str = Field(..., description="Current processing stage")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "current_invoice": 2,
-                "total_invoices": 5,
-                "processed_invoices": 1,
-                "failed_invoices": 0,
-                "current_filename": "invoice2.pdf",
-                "stage": "analyzing",
-            }
-        }
 
-
-# Enhanced Error Response Models
+# Error Response Models
 class ErrorDetail(BaseModel):
     """Detailed error information."""
 
@@ -513,24 +400,6 @@ class ErrorResponse(BaseModel):
     request_id: Optional[str] = Field(
         None, description="Request identifier for tracking"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": False,
-                "error": "ValidationError",
-                "message": "Request validation failed",
-                "details": [
-                    {
-                        "code": "required",
-                        "message": "Field is required",
-                        "field": "employee_name",
-                    }
-                ],
-                "timestamp": "2024-06-20T10:30:00Z",
-                "request_id": "req_123456",
-            }
-        }
 
 
 class SuccessResponse(BaseModel):
@@ -576,25 +445,3 @@ class HealthResponse(BaseModel):
     services: List[ServiceHealth] = Field(
         ..., description="Individual service health status"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "status": "healthy",
-                "version": "1.0.0",
-                "timestamp": "2024-06-20T10:30:00Z",
-                "uptime_seconds": 3600.5,
-                "services": [
-                    {
-                        "name": "vector_store",
-                        "status": "healthy",
-                        "response_time_ms": 45.2,
-                    },
-                    {
-                        "name": "llm_service",
-                        "status": "healthy",
-                        "response_time_ms": 123.4,
-                    },
-                ],
-            }
-        }

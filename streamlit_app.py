@@ -8,15 +8,12 @@ It properly sets up the path and runs the main app from the frontend directory.
 import os
 import sys
 
-# Add the current directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
-# Add frontend directory to path for local imports
 frontend_dir = os.path.join(current_dir, "frontend")
 sys.path.insert(0, frontend_dir)
 
-# Execute the frontend Streamlit app code
 try:
     exec(open(os.path.join(frontend_dir, "streamlit_app.py")).read())
 except Exception as e:

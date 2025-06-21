@@ -24,21 +24,18 @@ class LLMService:
     Service for interacting with Large Language Models.
 
     This class provides methods for invoice analysis and chatbot interactions
-    using the Gemini LLM through the new Google Gen AI SDK.
+    using the Gemini LLM through the Google Gen AI SDK.
     """
 
     def __init__(self):
         """Initialize the LLM service with Gemini configuration."""
         self.logger = logger
 
-        # Initialize the Google GenAI client
         if settings.GOOGLE_API_KEY:
             self.client = genai.Client(api_key=settings.GOOGLE_API_KEY)
         else:
-            # If no API key provided, client will use environment variables
             self.client = genai.Client()
 
-        # Set the model name
         self.model_name = settings.LLM_MODEL
 
         self.logger.info("LLM Service initialized with Google Gen AI SDK")
@@ -60,19 +57,15 @@ class LLMService:
         self.logger.info(f"Analyzing invoice for employee: {employee_name}")
 
         try:
-            # Create analysis prompt
             system_prompt = self._get_invoice_analysis_prompt()
             user_prompt = self._format_invoice_analysis_input(
                 invoice_text, policy_text, employee_name
             )
 
-            # Combine system and user prompts
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-            # Get structured response from Gemini using response schema
             response = await self._generate_structured_invoice_response(full_prompt)
 
-            # Convert Pydantic model to dict for API response
             analysis_result = response.model_dump()
 
             self.logger.info(
@@ -82,7 +75,6 @@ class LLMService:
 
         except Exception as e:
             self.logger.error(f"Error analyzing invoice: {e}", exc_info=True)
-            # Return a default error response
             return {
                 "status": ReimbursementStatus.DECLINED.value,
                 "reason": f"Error during analysis: {str(e)}",
@@ -189,10 +181,8 @@ Please analyze this invoice against the HR policy and provide your assessment in
             Parsed analysis result
         """
         try:
-            # Try to extract JSON from the response
             response = response.strip()
 
-            # Look for JSON in the response
             start_idx = response.find("{")
             end_idx = response.rfind("}") + 1
 
@@ -200,13 +190,11 @@ Please analyze this invoice against the HR policy and provide your assessment in
                 json_str = response[start_idx:end_idx]
                 result = json.loads(json_str)
 
-                # Validate required fields
                 required_fields = ["status", "reason"]
                 for field in required_fields:
                     if field not in result:
                         raise ValueError(f"Missing required field: {field}")
 
-                # Ensure proper data types and set defaults for optional fields
                 result["total_amount"] = (
                     float(result.get("total_amount", 0.0))
                     if result.get("total_amount") is not None
@@ -221,7 +209,6 @@ Please analyze this invoice against the HR policy and provide your assessment in
                 result.setdefault("categories", [])
                 result.setdefault("policy_violations", None)
 
-                # Ensure categories is always a list
                 if not isinstance(result.get("categories"), list):
                     result["categories"] = []
 
@@ -231,7 +218,6 @@ Please analyze this invoice against the HR policy and provide your assessment in
 
         except Exception as e:
             self.logger.error(f"Error parsing invoice analysis response: {e}")
-            # Return a fallback response
             return {
                 "status": "declined",
                 "reason": f"Error parsing analysis: {str(e)}. Raw response: {response[:200]}...",
@@ -262,16 +248,13 @@ Please analyze this invoice against the HR policy and provide your assessment in
         self.logger.info(f"Generating chat response for query: {query[:100]}...")
 
         try:
-            # Create chat prompt
             system_prompt = self._get_chat_system_prompt()
             user_prompt = self._format_chat_input(
                 query, context_documents, conversation_history
             )
 
-            # Combine system and user prompts
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-            # Get response from Gemini
             response = await self._generate_response(full_prompt)
 
             self.logger.info("Chat response generated successfully")
@@ -368,21 +351,18 @@ Remember: Only provide information that can be found in the context documents. U
         """
         prompt_parts = []
 
-        # Add conversation history if available with context enhancement
         if conversation_history:
             prompt_parts.append("CONVERSATION HISTORY:")
             prompt_parts.append(
                 "(Use this to understand context and provide relevant follow-up responses)"
             )
-            for msg in conversation_history[-6:]:  # Include last 3 exchanges
+            for msg in conversation_history[-5:]:
                 role = msg.get("role", "unknown")
                 content = msg.get("content", "")
                 prompt_parts.append(f"{role.upper()}: {content}")
             prompt_parts.append("")
 
-        # Add context documents with enhanced formatting
         if context_documents:
-            # Separate invoice and policy documents
             invoice_docs = [
                 doc
                 for doc in context_documents
@@ -396,7 +376,6 @@ Remember: Only provide information that can be found in the context documents. U
                 or doc.get("metadata", {}).get("doc_type") == "policy"
             ]
 
-            # Add invoice documents
             if invoice_docs:
                 prompt_parts.append("RELEVANT INVOICE DATA:")
                 prompt_parts.append(
@@ -435,15 +414,12 @@ Remember: Only provide information that can be found in the context documents. U
                         )
                     prompt_parts.append("")
 
-            # Add policy context
             if policy_docs:
                 prompt_parts.append("RELEVANT POLICY INFORMATION:")
                 prompt_parts.append(
                     f"(Found {len(policy_docs)} matching policy sections)"
                 )
-                for i, doc in enumerate(
-                    policy_docs[:3], 1
-                ):  # Limit to 3 policy sections
+                for i, doc in enumerate(policy_docs[:3], 1):
                     metadata = doc.get("metadata", {})
                     content = doc.get("content", "")
 
@@ -451,7 +427,6 @@ Remember: Only provide information that can be found in the context documents. U
                     if metadata.get("policy_name"):
                         prompt_parts.append(f"- Policy: {metadata.get('policy_name')}")
                     if content:
-                        # Include more policy content for comprehensive context
                         prompt_parts.append(f"- Content: {content[:800]}...")
                     prompt_parts.append("")
         else:
@@ -461,7 +436,6 @@ Remember: Only provide information that can be found in the context documents. U
             )
             prompt_parts.append("")
 
-        # Add current query with enhanced instructions
         prompt_parts.append(f"CURRENT QUERY: {query}")
         prompt_parts.append("")
         prompt_parts.append("RESPONSE INSTRUCTIONS:")
@@ -489,7 +463,6 @@ Remember: Only provide information that can be found in the context documents. U
             Generated response text
         """
         try:
-            # Create the generation request using the new SDK
             response = await self.client.aio.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
@@ -499,7 +472,6 @@ Remember: Only provide information that can be found in the context documents. U
                 ),
             )
 
-            # Extract text from response
             if response.candidates and len(response.candidates) > 0:
                 candidate = response.candidates[0]
                 if candidate.content and candidate.content.parts:
@@ -528,7 +500,6 @@ Remember: Only provide information that can be found in the context documents. U
             Generated response chunks as they are produced
         """
         try:
-            # Create the streaming generation request using the new SDK
             stream = await self.client.aio.models.generate_content_stream(
                 model=self.model_name,
                 contents=prompt,
@@ -538,11 +509,9 @@ Remember: Only provide information that can be found in the context documents. U
                 ),
             )
 
-            # Track streaming metrics
             chunk_count = 0
             total_tokens = 0
 
-            # Iterate through the stream and yield chunks
             async for chunk in stream:
                 if chunk.candidates and len(chunk.candidates) > 0:
                     candidate = chunk.candidates[0]
@@ -552,7 +521,6 @@ Remember: Only provide information that can be found in the context documents. U
                             chunk_count += 1
                             total_tokens += len(text.split())
 
-                            # Log every 10th chunk for monitoring
                             if chunk_count % 10 == 0:
                                 self.logger.debug(
                                     f"Streaming progress: {chunk_count} chunks, ~{total_tokens} tokens"
@@ -566,7 +534,6 @@ Remember: Only provide information that can be found in the context documents. U
 
         except Exception as e:
             self.logger.error(f"Error generating streaming response: {e}")
-            # Yield error message
             yield f"Error: {str(e)}"
 
     async def generate_chat_response_streaming(
@@ -591,16 +558,13 @@ Remember: Only provide information that can be found in the context documents. U
         )
 
         try:
-            # Create chat prompt
             system_prompt = self._get_chat_system_prompt()
             user_prompt = self._format_chat_input(
                 query, context_documents, conversation_history
             )
 
-            # Combine system and user prompts
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-            # Get streaming response from Gemini
             async for chunk in self.generate_streaming_response(full_prompt):
                 yield chunk
 
@@ -630,19 +594,15 @@ Remember: Only provide information that can be found in the context documents. U
             List of suggested related queries
         """
         try:
-            # Create suggestion prompt
             system_prompt = self._get_suggestion_system_prompt()
             user_prompt = self._format_suggestion_input(
                 original_query, context_documents, query_type
             )
 
-            # Combine prompts
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-            # Get suggestions from LLM
             response = await self._generate_response(full_prompt)
 
-            # Parse suggestions from response
             suggestions = self._parse_suggestions_response(response)
 
             self.logger.info(f"Generated {len(suggestions)} query suggestions")
@@ -650,7 +610,6 @@ Remember: Only provide information that can be found in the context documents. U
 
         except Exception as e:
             self.logger.error(f"Error generating query suggestions: {e}", exc_info=True)
-            # Return fallback suggestions based on query type
             return self._get_fallback_suggestions(query_type)
 
     def _get_suggestion_system_prompt(self) -> str:
@@ -708,17 +667,15 @@ EXAMPLE SUGGESTIONS:
         prompt_parts.append(f"QUERY TYPE: {query_type}")
         prompt_parts.append("")
 
-        # Add context summary
         if context_documents:
             prompt_parts.append("AVAILABLE DATA CONTEXT:")
 
-            # Extract key information from context
             employees = set()
             statuses = set()
             categories = set()
             amounts = []
 
-            for doc in context_documents[:5]:  # Limit context analysis
+            for doc in context_documents[:5]:
                 metadata = doc.get("metadata", {})
                 if metadata.get("employee_name"):
                     employees.add(metadata["employee_name"])
@@ -759,12 +716,8 @@ EXAMPLE SUGGESTIONS:
             List of parsed suggestions
         """
         try:
-            import json
-
-            # Clean the response
             response = response.strip()
 
-            # Look for JSON array in the response
             start_idx = response.find("[")
             end_idx = response.rfind("]") + 1
 
@@ -772,14 +725,13 @@ EXAMPLE SUGGESTIONS:
                 json_str = response[start_idx:end_idx]
                 suggestions = json.loads(json_str)
 
-                # Validate and clean suggestions
                 if isinstance(suggestions, list):
                     cleaned_suggestions = []
                     for suggestion in suggestions:
                         if isinstance(suggestion, str) and len(suggestion.strip()) > 5:
                             cleaned_suggestions.append(suggestion.strip())
 
-                    return cleaned_suggestions[:5]  # Limit to 5 suggestions
+                    return cleaned_suggestions[:5]
 
             # If JSON parsing fails, try to extract from text
             lines = response.split("\n")
@@ -789,7 +741,6 @@ EXAMPLE SUGGESTIONS:
                 if line and (
                     line.startswith('"') or line.startswith("-") or line.startswith("•")
                 ):
-                    # Clean the line
                     suggestion = (
                         line.replace('"', "").replace("-", "").replace("•", "").strip()
                     )
@@ -866,30 +817,25 @@ EXAMPLE SUGGESTIONS:
         self.logger.info(f"Starting streaming invoice analysis for {employee_name}")
 
         try:
-            # Yield start signal
             yield {
                 "type": "invoice_analysis",
                 "data": {"status": "starting", "employee": employee_name},
             }
 
-            # Create analysis prompt using existing methods
             system_prompt = self._get_invoice_analysis_prompt()
             user_prompt = self._format_invoice_analysis_input(
                 invoice_text, policy_text, employee_name
             )
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-            # Yield analysis in progress
             yield {
                 "type": "invoice_analysis",
                 "data": {"status": "analyzing", "stage": "llm_processing"},
             }
 
-            # Get structured response instead of streaming for better parsing
             try:
                 result = await self._generate_structured_invoice_response(full_prompt)
 
-                # Yield completion with structured result
                 yield {
                     "type": "invoice_analysis",
                     "data": {
@@ -908,7 +854,6 @@ EXAMPLE SUGGESTIONS:
                     f"Structured analysis failed, falling back to streaming: {structured_error}"
                 )
 
-                # Fallback to streaming approach if structured fails
                 full_response = ""
                 chunk_count = 0
 
@@ -916,7 +861,6 @@ EXAMPLE SUGGESTIONS:
                     chunk_count += 1
                     full_response += chunk
 
-                    # Yield periodic progress updates
                     if chunk_count % 5 == 0:
                         yield {
                             "type": "invoice_analysis",
@@ -927,7 +871,6 @@ EXAMPLE SUGGESTIONS:
                             },
                         }
 
-                # Parse the response using fallback method
                 yield {
                     "type": "invoice_analysis",
                     "data": {"status": "parsing", "stage": "response_parsing"},
@@ -935,7 +878,6 @@ EXAMPLE SUGGESTIONS:
 
                 result = self._parse_invoice_analysis_response(full_response)
 
-                # Yield completion
                 yield {
                     "type": "invoice_analysis",
                     "data": {
@@ -966,7 +908,6 @@ EXAMPLE SUGGESTIONS:
             Exception: If health check fails
         """
         try:
-            # Test API connection with a simple request
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents="Health check test",
@@ -1000,10 +941,8 @@ EXAMPLE SUGGESTIONS:
             Exception: If the response doesn't conform to the schema or generation fails
         """
         try:
-            # Get the JSON schema from the Pydantic model
             response_schema = LLMInvoiceAnalysisResponse.model_json_schema()
 
-            # Create the generation request with response schema enforcement
             response = await self.client.aio.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
@@ -1015,13 +954,11 @@ EXAMPLE SUGGESTIONS:
                 ),
             )
 
-            # Extract text from response
             if response.candidates and len(response.candidates) > 0:
                 candidate = response.candidates[0]
                 if candidate.content and candidate.content.parts:
                     response_text = candidate.content.parts[0].text
                     if response_text is not None:
-                        # Parse and validate the JSON response using Pydantic
                         try:
                             response_data = json.loads(response_text)
                             validated_response = LLMInvoiceAnalysisResponse(
@@ -1048,7 +985,6 @@ EXAMPLE SUGGESTIONS:
 
         except Exception as e:
             self.logger.error(f"Error generating structured response: {e}")
-            # If structured generation fails, try to create a minimal valid response
             try:
                 fallback_response = LLMInvoiceAnalysisResponse(
                     status=ReimbursementStatus.DECLINED,

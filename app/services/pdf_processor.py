@@ -41,7 +41,6 @@ class PDFProcessor:
             ValueError: If text extraction fails
         """
         try:
-            # Run the blocking PDF extraction in a thread pool
             return await asyncio.get_event_loop().run_in_executor(
                 None, self._extract_text_sync, pdf_path
             )
@@ -70,16 +69,13 @@ class PDFProcessor:
             with open(pdf_path, "rb") as file:
                 pdf_reader = PyPDF2.PdfReader(file)
 
-                # Check if PDF is encrypted
                 if pdf_reader.is_encrypted:
                     self.logger.warning(
                         f"PDF {pdf_path} is encrypted, attempting to decrypt"
                     )
-                    # Try to decrypt with empty password
                     if not pdf_reader.decrypt(""):
                         raise ValueError("PDF is encrypted and cannot be read")
 
-                # Extract text from all pages
                 for page_num, page in enumerate(pdf_reader.pages):
                     try:
                         page_text = page.extract_text()
@@ -145,7 +141,6 @@ class PDFProcessor:
                     "is_encrypted": pdf_reader.is_encrypted,
                 }
 
-                # Extract document info if available
                 if pdf_reader.metadata:
                     info = pdf_reader.metadata
                     metadata.update(
@@ -181,7 +176,6 @@ class PDFProcessor:
         try:
             with open(pdf_path, "rb") as file:
                 pdf_reader = PyPDF2.PdfReader(file)
-                # Try to access the first page to validate
                 if len(pdf_reader.pages) > 0:
                     _ = pdf_reader.pages[0]
                 return True

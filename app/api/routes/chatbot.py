@@ -7,7 +7,7 @@ processed invoice data using natural language.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -28,7 +28,6 @@ from app.services.vector_store import VectorStoreService
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# In-memory storage for conversation history (in production, use a database)
 conversation_store = {}
 
 
@@ -62,43 +61,39 @@ async def chat_with_invoices(
     logger.info(f"Processing chat query: {chat_request.query[:100]}...")
 
     try:
-        # Initialize services
         llm_service = LLMService()
         chatbot_service = ChatbotService(vector_store, llm_service)
 
-        # Get or create conversation history
         session_id = chat_request.session_id or "default"
         conversation_history = conversation_store.get(session_id, [])
 
-        # Process the query
         response = await chatbot_service.process_query(
             query=chat_request.query,
             conversation_history=conversation_history,
             filters=chat_request.filters,
         )
 
-        # Update conversation history
         conversation_history.append(
             ChatMessage(
-                role="user", content=chat_request.query, timestamp=datetime.utcnow()
+                role="user",
+                content=chat_request.query,
+                timestamp=datetime.now(timezone.utc),
             )
         )
         conversation_history.append(
             ChatMessage(
                 role="assistant",
                 content=response["response"],
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
             )
         )
 
-        # Keep only recent messages (limit memory usage)
-        max_history = 20  # Keep last 10 exchanges
+        max_history = 20
         if len(conversation_history) > max_history:
             conversation_history = conversation_history[-max_history:]
 
         conversation_store[session_id] = conversation_history
 
-        # Prepare response
         chat_response = ChatResponse(
             response=response["response"],
             session_id=session_id,
@@ -107,7 +102,7 @@ async def chat_with_invoices(
             query_type=response.get("query_type", "general"),
             confidence_score=response.get("confidence_score", 0.8),
             suggestions=response.get("suggestions", []),
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         )
 
         logger.info(f"Chat response generated successfully for session: {session_id}")
@@ -152,7 +147,7 @@ async def clear_chat_history(session_id: str) -> dict:
 
     return {
         "message": f"Chat history cleared for session: {session_id}",
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(timezone.utc),
     }
 
 
@@ -168,7 +163,7 @@ async def get_active_sessions() -> dict:
     return {
         "active_sessions": sessions,
         "total_sessions": len(sessions),
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(timezone.utc),
     }
 
 
@@ -199,52 +194,44 @@ async def chat_with_invoices_streaming(
     async def generate_streaming_response():
         """Generate streaming response chunks with optimized SSE format."""
         try:
-            # Initialize services
             llm_service = LLMService()
             chatbot_service = ChatbotService(vector_store, llm_service)
 
-            # Get or create conversation history
             session_id = chat_request.session_id or "default"
             conversation_history = conversation_store.get(session_id, [])
 
-            # Process the streaming query
             async for chunk in chatbot_service.process_query_streaming(
                 query=chat_request.query,
                 conversation_history=conversation_history,
                 filters=chat_request.filters,
             ):
-                # Create streaming chunk with timestamp
                 streaming_chunk = StreamingChunk(
                     type=StreamingChunkType(chunk["type"]),
                     data=chunk["data"],
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                 )
 
-                # Yield the chunk as SSE format with proper formatting
                 chunk_json = streaming_chunk.model_dump_json()
                 yield f"data: {chunk_json}\n\n"
 
-                # Add small delay to prevent overwhelming the client
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.1)
 
-            # Update conversation history for non-error responses
             if chat_request.session_id:
                 conversation_history.append(
                     ChatMessage(
                         role="user",
                         content=chat_request.query,
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                     )
                 )
                 conversation_history.append(
                     ChatMessage(
                         role="assistant",
                         content="[Streaming response completed]",
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                     )
                 )
 
-                # Keep only recent messages (limit memory usage)
                 max_history = 20
                 if len(conversation_history) > max_history:
                     conversation_history = conversation_history[-max_history:]
@@ -256,7 +243,7 @@ async def chat_with_invoices_streaming(
             error_chunk = StreamingChunk(
                 type=StreamingChunkType.ERROR,
                 data=f"Error processing chat query: {str(e)}",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
             )
             yield f"data: {error_chunk.model_dump_json()}\n\n"
 
@@ -269,7 +256,7 @@ async def chat_with_invoices_streaming(
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Expose-Headers": "*",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "Transfer-Encoding": "chunked",  # Enable chunked transfer
+            "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
         },
     )
