@@ -1,485 +1,604 @@
-# Invoice Reimbursement System
+# 📄 Invoice Reimbursement System
 
-An intelligent invoice reimbursement analysis system built with FastAPI, LangChain, and vector databases. This system automates the process of analyzing employee invoice reimbursements against company policies using Large Language Models (LLMs) and provides a RAG-based chatbot for querying processed invoices.
+A comprehensive AI-powered invoice reimbursement analysis system built with FastAPI, LangChain, and Gemini LLM. This system uses RAG (Retrieval Augmented Generation) to analyze invoice documents against HR policies and provides an intelligent chatbot interface for querying processed invoices.
 
 ## 🚀 Features
 
-### Core Functionality
-
-- **Automated Invoice Analysis**: Process PDF invoices against HR reimbursement policies using Gemini LLM
-- **Intelligent Policy Compliance**: Determine reimbursement status (Fully Reimbursed, Partially Reimbursed, or Declined)
-- **Vector Database Storage**: Store analysis results with embeddings in Qdrant for efficient retrieval
-- **RAG-Powered Chatbot**: Natural language querying of processed invoice data
-- **Batch Processing**: Handle multiple invoices via ZIP file uploads
-- **Comprehensive Logging**: Detailed logging and error handling
-
-### API Endpoints
-
-1. **Invoice Analysis Endpoint** (`/api/v1/analyze-invoices`)
-
-   - Upload HR policy PDF and invoice ZIP files
-   - Automated analysis using Gemini LLM
-   - Store results in vector database
-2. **RAG Chatbot Endpoint** (`/api/v1/chat`)
-
-   - Natural language queries about processed invoices
-   - Context-aware responses with conversation history
-   - Source document citations
-   - **Smart Query Suggestions**: Get related query suggestions for better data exploration
+- **Intelligent Invoice Analysis**: Analyze PDF invoices against HR reimbursement policies using Gemini LLM
+- **Vector-Based Storage**: Store and retrieve invoice embeddings using Qdrant vector database
+- **RAG Chatbot**: Interactive chatbot for querying processed invoices using natural language
+- **Batch Processing**: Process multiple invoices at once via ZIP file upload
+- **Duplicate Detection**: Prevent duplicate processing of the same invoices
+- **Streaming Responses**: Real-time streaming for both analysis and chat responses
+- **Modern UI**: Clean, responsive Streamlit frontend with session management
+- **Comprehensive API**: RESTful API with FastAPI for backend operations
 
 ## 🏗️ Architecture
 
-### Technology Stack
-
-- **Backend**: FastAPI (Python 3.8+)
-- **LLM Integration**: LangChain + Google Gemini
-- **Vector Database**: Qdrant
-- **Embeddings**: Sentence-Transformers (all-MiniLM-L6-v2)
-- **PDF Processing**: PyPDF2
-- **Configuration**: Pydantic Settings
-
-### System Architecture
-
 ```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   FastAPI App   │◄──►│   LLM Service   │◄──►│  Gemini API     │
+│  Streamlit UI   │    │   FastAPI API   │    │  Gemini LLM     │
+│  (Frontend)     │◄──►│   (Backend)     │◄──►│  (Analysis)     │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │
-         ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ Vector Store    │◄──►│ PDF Processor   │◄──►│ File Utils      │
-│ (Qdrant)        │    │                 │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Chatbot Service │
-│ (RAG)           │
-└─────────────────┘
+                              │
+                              ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │  Qdrant Vector  │    │  PDF Processor  │
+                       │  Database       │    │  (Text Extract) │
+                       └─────────────────┘    └─────────────────┘
 ```
 
-## 📦 Installation
+## 🛠️ Tech Stack
+
+### Backend
+
+- **FastAPI**: Modern, fast web framework for building APIs
+- **LangChain**: Framework for developing applications with LLMs
+- **Gemini**: Google's advanced LLM for invoice analysis
+- **Qdrant**: Vector database for storing and retrieving embeddings
+- **Sentence-Transformers**: For generating text embeddings
+- **PyPDF2**: PDF text extraction
+- **Pydantic**: Data validation and serialization
+
+### Frontend
+
+- **Streamlit**: Web application framework for data science
+- **Streamlit-Chat**: Chat interface components
+
+### Infrastructure
+
+- **Docker & Docker Compose**: Complete containerization solution
+- **Qdrant**: Vector database (containerized)
+- **Multi-stage Docker builds**: Optimized production images
+- **Health checks**: Automated service monitoring
+
+## 🐳 Docker Deployment (Recommended)
+
+The easiest way to run the Invoice Reimbursement System is using Docker. This method handles all dependencies and services automatically.
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- Qdrant server (local or cloud)
-- Google Gemini API key
+- [Docker](https://docs.docker.com/get-docker/) (v20.10 or higher)
+- [Docker Compose](https://docs.docker.com/compose/install/) (v2.0 or higher)
+- At least 4GB RAM available for Docker
+- [Gemini API Key](https://aistudio.google.com/app/apikey)
 
-### Step 1: Clone and Setup
+### Quick Start with Docker
+
+1. **Clone the repository**:
+
+   ```bash
+   git clone <repository-url>
+   cd Reimbursement_RAG
+   ```
+
+2. **Set up environment variables**:
+
+   ```bash
+   # Copy the environment template
+   cp .env.example .env
+   
+   # Edit .env and add your Gemini API key
+   nano .env  # or use your preferred editor
+   ```
+
+3. **Run the complete setup**:
+
+   ```bash
+   # Make the setup script executable and run it
+   chmod +x docker-setup.sh
+   ./docker-setup.sh setup
+   ```
+
+   This single command will:
+   - Check Docker installation
+   - Build all necessary images
+   - Start all services (Qdrant, Backend, Frontend)
+   - Perform health checks
+
+4. **Access the application**:
+   - **Frontend**: <http://localhost:8501>
+   - **Backend API**: <http://localhost:8000>
+   - **API Documentation**: <http://localhost:8000/docs>
+   - **Qdrant Dashboard**: <http://localhost:6333/dashboard>
+
+### Docker Management Commands
+
+The `docker-setup.sh` script provides convenient commands for managing your Docker environment:
 
 ```bash
-# Clone the repository (if using git)
+# Initial setup (build and start everything)
+./docker-setup.sh setup
+
+# Start services in production mode
+./docker-setup.sh start
+
+# Start services in development mode (with hot reload)
+./docker-setup.sh start-dev
+
+# Stop all services
+./docker-setup.sh stop
+
+# View service status and URLs
+./docker-setup.sh status
+
+# View logs (all services)
+./docker-setup.sh logs
+
+# View logs for specific service
+./docker-setup.sh logs backend
+./docker-setup.sh logs frontend
+./docker-setup.sh logs qdrant
+
+# Restart services
+./docker-setup.sh restart
+
+# Clean up Docker resources
+./docker-setup.sh cleanup
+
+# Complete reset (removes volumes and rebuilds)
+./docker-setup.sh reset
+
+# Show help
+./docker-setup.sh help
+```
+
+### Docker Architecture
+
+The Docker setup includes three main services:
+
+```text
+┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│   Streamlit UI      │    │    FastAPI API      │    │    Qdrant Vector    │
+│   (Port 8501)       │◄──►│    (Port 8000)      │◄──►│    (Port 6333)      │
+│   invoice-frontend  │    │   invoice-backend   │    │   invoice-qdrant    │
+└─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+```
+
+### Development vs Production
+
+- **Production mode** (`docker-compose.yml`): Optimized images, no hot reload
+- **Development mode** (`docker-compose.dev.yml`): Code mounting, hot reload enabled
+
+### Troubleshooting Docker Setup
+
+**Services not starting:**
+
+```bash
+# Check service logs
+./docker-setup.sh logs
+
+# Check Docker system
+docker system df
+docker system prune -f
+```
+
+**Port conflicts:**
+
+```bash
+# Check what's using the ports
+lsof -i :8000  # Backend port
+lsof -i :8501  # Frontend port
+lsof -i :6333  # Qdrant port
+```
+
+**Memory issues:**
+
+```bash
+# Check Docker memory usage
+docker stats
+
+# Increase Docker memory in Docker Desktop settings
+# Recommended: At least 4GB RAM for Docker
+```
+
+## 💻 Local Development Setup (Alternative)
+
+If you prefer to run without Docker, follow these steps:
+
+## 📋 Prerequisites
+
+- Python 3.9 or higher
+- Docker (for Qdrant vector database)
+- Google API Key for Gemini LLM access
+
+## 🔧 Installation
+
+### 1. Clone the Repository
+
+```bash
 git clone <repository-url>
 cd Reimbursement_RAG
+```
 
-# Create virtual environment
-python -m venv venv
+### 2. Set Up Python Environment
 
-# Activate virtual environment
-# On macOS/Linux:
-source venv/bin/activate
-# On Windows:
-# venv\\Scripts\\activate
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
-# Install dependencies
+### 3. Install Dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-### Step 2: Environment Configuration
+### 4. Set Up Environment Variables
 
 ```bash
-# Copy environment template
+# Copy the example environment file
 cp .env.example .env
 
-# Edit .env file with your configurations
+# Edit .env with your actual values
+nano .env  # or use your preferred editor
 ```
 
-Required environment variables:
+**Required Environment Variables:**
 
 ```bash
-# Gemini API Configuration
+# Gemini API Key (REQUIRED)
 GOOGLE_API_KEY=your_gemini_api_key_here
 
-# Qdrant Configuration (adjust as needed)
+# Qdrant Configuration
 QDRANT_URL=http://localhost:6333
-QDRANT_API_KEY=your_qdrant_api_key_here  # Optional for cloud instances
+QDRANT_API_KEY=  # Leave empty for local Docker instance
 
-# Application Configuration
-DEBUG=True
+# Application Settings
+DEBUG=true
 LOG_LEVEL=INFO
 ```
 
-### Step 3: Setup Qdrant
+### 5. Start Qdrant Vector Database
 
 ```bash
-# Option 1: Run Qdrant with Docker
-docker run -p 6333:6333 qdrant/qdrant
+# Start Qdrant using Docker
+docker run -p 6333:6333 -d --name qdrant qdrant/qdrant
 
-# Option 2: Use Qdrant Cloud (update QDRANT_URL and QDRANT_API_KEY in .env)
+# Or use the VS Code task
+# Command Palette > Tasks: Run Task > Start Qdrant with Docker
 ```
 
-### Step 4: Run the Application
+### 6. Initialize the Application
 
 ```bash
-   # Start the FastAPI server
+# Verify setup
+python verify_setup.py
+
+# Check configuration
+python check_setup.py
+```
+
+## 🚀 Quick Start
+
+### Option 1: Using VS Code Tasks (Recommended)
+
+1. Open VS Code in the project directory
+2. Press `Ctrl+Shift+P` (Cmd+Shift+P on Mac)
+3. Select "Tasks: Run Task"
+4. Choose "Build and Run Invoice Reimbursement System"
+
+### Option 2: Manual Start
+
+#### Start Backend (FastAPI)
+
+```bash
+# From project root
+./venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### Start Frontend (Streamlit)
+
+```bash
+# In a new terminal
+./venv/bin/python -m streamlit run streamlit_app.py --server.port 8501
+```
+
+### Option 3: Using Available Tasks
+
+```bash
+# Install dependencies
+python -m pip install -r requirements.txt
+
+# Start backend
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# The application will be available at:
-# - API:  # - Interactive docs: http://localhost:8000/docs
-# - ReDoc: http://localhost:8000/redoc
+# Start frontend (in another terminal)
+python -m streamlit run streamlit_app.py --server.port 8501
 ```
 
-## 🎯 Usage Guide
+## 📱 Usage
 
-### 1. Invoice Analysis
+### 1. Access the Application
 
-**Endpoint**: `POST /api/v1/analyze-invoices`
+- **Frontend**: <http://localhost:8501>
+- **Backend API**: <http://localhost:8000>
+- **API Documentation**: <http://localhost:8000/docs>
 
-Upload invoices for analysis:
+### 2. Invoice Analysis
 
-```bash
-curl -X POST "http://localhost:8000/api/v1/analyze-invoices" \\
-  -F "employee_name=John Doe" \\
-  -F "policy_file=@hr_policy.pdf" \\
-  -F "invoices_zip=@invoices.zip"
+1. Navigate to the "📄 Invoice Analysis" page
+2. Enter employee name
+3. Upload HR reimbursement policy (PDF)
+4. Upload invoices (ZIP file containing PDFs)
+5. Click "🔍 Start Analysis"
+6. View results with detailed breakdown
+
+### 3. Chat with Invoices
+
+1. Navigate to the "💬 Chat with Invoices" page
+2. Ask questions about processed invoices
+3. Use natural language queries like:
+   - "Show me all declined invoices"
+   - "What invoices did John submit?"
+   - "List all partially reimbursed expenses"
+
+## 🔍 API Endpoints
+
+### Health Check
+
+- `GET /health` - Application health status
+- `GET /api/v1/health/detailed` - Detailed health check
+
+### Invoice Analysis
+
+- `POST /api/v1/analyze-invoices` - Analyze invoices against policy
+- `POST /api/v1/analyze-invoices-stream` - Streaming analysis
+- `GET /api/v1/analysis-status` - Get analysis status
+
+### Chatbot
+
+- `POST /api/v1/chat` - Chat with processed invoices
+- `POST /api/v1/chat/stream` - Streaming chat responses
+- `GET /api/v1/chat/history/{session_id}` - Get chat history
+- `DELETE /api/v1/chat/history/{session_id}` - Clear chat history
+
+## 📁 Project Structure
+
+```text
+Reimbursement_RAG/
+├── app/                          # FastAPI Backend
+│   ├── __init__.py
+│   ├── main.py                   # FastAPI application entry point
+│   ├── api/                      # API routes
+│   │   └── routes/
+│   │       ├── health.py         # Health check endpoints
+│   │       ├── invoice_analysis.py # Invoice analysis endpoints
+│   │       └── chatbot.py        # Chat endpoints
+│   ├── core/                     # Core configuration
+│   │   ├── config.py             # Application settings
+│   │   └── logging_config.py     # Logging configuration
+│   ├── models/                   # Data models
+│   │   └── schemas.py            # Pydantic schemas
+│   ├── services/                 # Business logic
+│   │   ├── llm_service.py        # Gemini LLM integration
+│   │   ├── vector_store.py       # Qdrant operations
+│   │   ├── pdf_processor.py      # PDF text extraction
+│   │   └── chatbot_service.py    # RAG chatbot logic
+│   └── utils/                    # Utilities
+│       ├── file_utils.py         # File handling utilities
+│       └── responses.py          # Response utilities
+├── frontend/                     # Streamlit Frontend
+│   ├── streamlit_app.py          # Main Streamlit app
+│   ├── pages/                    # Streamlit pages
+│   │   ├── invoice_analysis.py   # Invoice analysis page
+│   │   └── chat_with_invoices.py # Chat page
+│   └── utils/                    # Frontend utilities
+│       ├── streamlit_utils.py    # Streamlit helpers
+│       └── theme.py              # UI theme configuration
+├── logs/                         # Application logs
+├── uploads/                      # File uploads storage
+├── requirements.txt              # Python dependencies
+├── .env.example                  # Environment variables template
+├── streamlit_app.py              # Entry point for Streamlit
+├── verify_setup.py               # Setup verification script
+└── check_setup.py                # Configuration check script
 ```
 
-**Request Parameters**:
+## ⚙️ Configuration
 
-- `employee_name`: Name of the employee (form field)
-- `policy_file`: HR reimbursement policy PDF file
-- `invoices_zip`: ZIP file containing invoice PDFs
+### Environment Variables
 
-**Response**:
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `GOOGLE_API_KEY` | Google Gemini API key | - | ✅ |
+| `QDRANT_URL` | Qdrant database URL | `http://localhost:6333` | ✅ |
+| `QDRANT_API_KEY` | Qdrant API key | - | 🔄 |
+| `DEBUG` | Enable debug mode | `false` | ❌ |
+| `LOG_LEVEL` | Logging level | `INFO` | ❌ |
+| `COLLECTION_NAME` | Qdrant collection name | `invoice_reimbursements` | ❌ |
+| `EMBEDDING_MODEL` | Sentence transformer model | `all-MiniLM-L6-v2` | ❌ |
+| `MAX_FILE_SIZE` | Max upload size (MB) | `50` | ❌ |
+| `LLM_MODEL` | Gemini model name | `gemini-2.5-flash` | ❌ |
+| `LLM_TEMPERATURE` | LLM temperature | `0.1` | ❌ |
 
-```json
-{
-  "success": true,
-  "message": "Processed 3 invoices successfully",
-  "employee_name": "John Doe",
-  "total_invoices": 3,
-  "processed_invoices": 3,
-  "failed_invoices": 0,
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
+### VS Code Tasks
 
-### 2. Chatbot Queries
+The project includes predefined VS Code tasks for common operations:
 
-**Endpoint**: `POST /api/v1/chat`
+- **Setup Python Environment**: Create virtual environment
+- **Install Dependencies**: Install Python packages
+- **Start Qdrant with Docker**: Launch Qdrant container
+- **Run FastAPI Server**: Start backend server
+- **Run Streamlit Frontend**: Start frontend application
+- **Build and Run**: Complete application startup
 
-Query processed invoices using natural language:
+## 📊 Logging
 
-```bash
-curl -X POST "http://localhost:8000/api/v1/chat" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "query": "Show me all declined invoices for John Doe",
-    "session_id": "user123",
-    "include_sources": true
-  }'
-```
+The application uses structured logging with:
 
-**Request Body**:
+- **File Logging**: Logs stored in `logs/` directory
+- **Console Logging**: Development-friendly console output
+- **Log Rotation**: Daily log file rotation
+- **Structured Format**: JSON-formatted logs for production
 
-```json
-{
-  "query": "Show me all declined invoices for John Doe",
-  "session_id": "user123",
-  "filters": {
-    "employee_name": "John Doe",
-    "status": "declined"
-  },
-  "include_sources": true
-}
-```
+## 🔒 Security
 
-**Response**:
+### Production Considerations
 
-```json
-{
-  "response": "I found 2 declined invoices for John Doe:\\n\\n**Invoice 1**: office_supplies.pdf\\n- **Status**: Declined\\n- **Reason**: Office supplies exceed monthly limit\\n- **Amount**: $150.00\\n\\n**Invoice 2**: restaurant_bill.pdf\\n- **Status**: Declined\\n- **Reason**: Personal meal expenses not reimbursable\\n- **Amount**: $85.00",
-  "session_id": "user123",
-  "sources": [
-    {
-      "document_id": "uuid-1",
-      "filename": "office_supplies.pdf",
-      "employee_name": "John Doe",
-      "status": "declined",
-      "similarity_score": 0.95
-    }
-  ],
-  "retrieved_documents": 2,
-  "query_type": "employee_specific",
-  "timestamp": "2024-01-15T10:35:00Z"
-}
-```
+- Set `DEBUG=false` in production
+- Configure specific `ALLOWED_HOSTS`
+- Use environment variables for all secrets
+- Implement proper authentication/authorization
+- Use HTTPS in production
+- Secure file upload validation
 
-### 3. Example Queries
+### File Upload Security
 
-The chatbot supports various types of natural language queries:
-
-```bash
-# Employee-specific queries
-"Show me all invoices for John Doe"
-"What is the total reimbursement amount for Jane Smith?"
-
-# Status-based queries  
-"List all declined invoices"
-"Show me approved expenses from last month"
-
-# General queries
-"What are the most common policy violations?"
-"Show me invoices over $500"
-"Summarize reimbursement statistics"
-```
-
-## 🎯 Streaming Invoice Analysis (NEW)
-
-The system now supports **real-time streaming** for invoice analysis processing, providing immediate feedback during PDF processing and LLM analysis.
-
-### Streaming Features
-
-1. **Real-time Progress Updates**: Live progress tracking for each invoice
-2. **PDF Processing Streaming**: Real-time feedback during text extraction
-3. **LLM Analysis Streaming**: Token-by-token analysis results
-4. **Vector Storage Updates**: Progress updates during database storage
-5. **Individual Results**: Streaming results for each processed invoice
-6. **Error Handling**: Real-time error reporting with detailed messages
-
-### Streaming Endpoints
-
-- **`POST /api/v1/analyze-invoices-stream`**: Stream invoice analysis with real-time updates
-- **`POST /api/v1/chat/stream`**: Stream chatbot responses for invoice queries
-
-### Streaming Response Format
-
-The streaming endpoints use Server-Sent Events (SSE) with structured JSON chunks:
-
-```json
-{
-  "type": "progress|invoice_analysis|result|error|done",
-  "data": {...},
-  "timestamp": "2024-06-20T10:30:00Z"
-}
-```
-
-### Example Usage
-
-```python
-# Stream invoice analysis
-async with StreamingInvoiceAnalysisClient() as client:
-    response = await client.analyze_invoices_streaming("John Doe")
-    client.print_analysis_summary(response)
-```
-
-See `streaming_invoice_analysis_client.py` for a complete example.
-
-## 🛠️ Technical Details
-
-### LLM Integration
-
-The system uses **Google Gemini** through LangChain for:
-
-1. **Invoice Analysis**:
-
-   - Structured prompts for policy compliance checking
-   - JSON-formatted responses with detailed reasoning
-   - Error handling and fallback responses
-2. **Chatbot Responses**:
-
-   - RAG-based response generation
-   - Context-aware conversations
-   - Markdown-formatted responses
-
-### Vector Database Design
-
-**Qdrant Collection Structure**:
-
-- **Vectors**: 384-dimensional embeddings (all-MiniLM-L6-v2)
-- **Metadata**: Employee name, status, amounts, dates, policy violations
-- **Content**: Combined invoice text and analysis results
-- **Distance Metric**: Cosine similarity
-
-### Prompt Engineering
-
-#### Invoice Analysis Prompt
-
-The system uses a carefully crafted prompt that:
-
-- Provides clear analysis guidelines
-- Specifies output format (JSON)
-- Includes policy compliance rules
-- Handles edge cases and errors
-
-#### Chatbot System Prompt
-
-The chatbot prompt:
-
-- Defines assistant capabilities
-- Specifies response formatting (Markdown)
-- Provides context handling instructions
-- Ensures accurate information retrieval
-
-### Error Handling & Logging
-
-- **Comprehensive logging** at DEBUG, INFO, WARNING, and ERROR levels
-- **Graceful error handling** with user-friendly error messages
-- **File validation** for uploads and processing
-- **API error responses** with appropriate HTTP status codes
-
-## 🔧 Configuration
-
-### Application Settings
-
-All settings are managed through environment variables:
-
-```python
-# Core settings
-APP_NAME=Invoice Reimbursement System
-DEBUG=True
-LOG_LEVEL=INFO
-
-# API Keys  
-GOOGLE_API_KEY=your_key_here
-
-# Vector Database
-QDRANT_URL=http://localhost:6333
-COLLECTION_NAME=invoice_reimbursements
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-
-# File Processing
-MAX_FILE_SIZE=50  # MB
-UPLOAD_DIRECTORY=uploads
-```
-
-### Logging Configuration
-
-Logs are written to:
-
-- **Console**: INFO level and above
-- **File**: DEBUG level and above (`logs/app_YYYYMMDD.log`)
-- **Rotation**: 10MB files, 5 backups
-
-## 🚀 Optional Enhancements
-
-### Implemented Features
-
-- **Advanced Error Handling**: Comprehensive error handling and logging
-- **Batch Processing**: Concurrent processing of multiple invoices with semaphore limiting
-
-### Future Enhancements
-
-- **Authentication & Authorization**: User management and access control
-- **Database Persistence**: Replace in-memory conversation storage with database
-- **Advanced Analytics**: Detailed statistics and reporting dashboard
-- **Email Notifications**: Automated notifications for processing results
-- **Multi-tenancy**: Support for multiple organizations
+- File type validation
+- File size limits
+- Sanitized file names
+- Secure storage paths
 
 ## 🧪 Testing
 
-### Manual Testing
-
-1. **Health Check**:
-
-    ```bash
-    curl http://localhost:8000/health
-    ```
-
-2. **Invoice Analysis Test**:
-
-   - Prepare a sample HR policy PDF
-   - Create a ZIP file with sample invoice PDFs
-   - Use the `/analyze-invoices` endpoint
-3. **Chatbot Test**:
+### Verify Installation
 
 ```bash
-curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{
-    "messages": [
-        {"role": "user", "content": "Show me all invoices for John Doe"}
-    ]
-}'
-   - Process some invoices first
-   - Use the `/chat` endpoint with various queries
+python verify_setup.py
 ```
 
-### API Documentation
+### Check Configuration
 
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
-## 🤝 Development
-
-### Project Structure
-
-```text
-app/
-├── **init**.py
-├── main.py                 # FastAPI application setup
-├── api/
-│   └── routes/
-│       ├── invoice_analysis.py  # Invoice processing endpoint
-│       └── chatbot.py           # Chat endpoint
-├── core/
-│   ├── config.py          # Configuration settings
-│   └── logging_config.py  # Logging setup
-├── models/
-│   └── schemas.py         # Pydantic models
-├── services/
-│   ├── pdf_processor.py   # PDF text extraction
-│   ├── llm_service.py     # LLM interactions
-│   ├── vector_store.py    # Qdrant vector database
-│   └── chatbot_service.py # RAG chatbot logic
-└── utils/
-    └── file_utils.py      # File handling utilities
+```bash
+python check_setup.py
 ```
 
-### Code Style
+### Manual Testing
 
-- **Type hints** throughout the codebase
-- **Comprehensive docstrings** for all functions
-- **Error handling** with appropriate logging
-- **Modular design** with clear separation of concerns
+1. Start the application
+2. Upload sample invoices
+3. Test chat functionality
+4. Verify vector storage
 
-## 📝 License
-
-This project is developed as part of an assignment for invoice reimbursement system development.
-
-## 🆘 Troubleshooting
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **Qdrant Connection Error**:
+#### 1. Qdrant Connection Error
 
-   - Ensure Qdrant is running on the configured URL
-   - Check firewall settings
-   - Verify API key for cloud instances
-2. **Gemini API Error**:
+```bash
+# Check if Qdrant is running
+docker ps | grep qdrant
 
-   - Verify API key is correct and active
-   - Check API quotas and rate limits
-   - Ensure billing is enabled (if using paid tier)
-3. **PDF Processing Errors**:
+# Restart Qdrant
+docker restart qdrant
+```
 
-   - Ensure PDFs are not encrypted
-   - Check file format and corruption
-   - Verify file size limits
-4. **Memory Issues**:
+#### 2. Gemini API Error
 
-   - Reduce batch processing concurrency
-   - Increase system memory allocation
-   - Consider processing smaller file batches
+- Verify `GOOGLE_API_KEY` in `.env`
+- Check API key permissions
+- Ensure billing is enabled
 
-### Support
+#### 3. Import Errors
 
-For technical issues:
+```bash
+# Reinstall dependencies
+pip install --force-reinstall -r requirements.txt
+```
 
-1. Check the logs in the `logs/` directory
-2. Verify environment variable configuration
-3. Test with sample files first
-4. Review API documentation at `/docs`
+#### 4. Port Already in Use
+
+```bash
+# Kill process on port 8000
+lsof -ti:8000 | xargs kill -9
+
+# Or use different port
+uvicorn app.main:app --port 8001
+```
+
+### Debug Mode
+
+Enable debug mode for detailed logging:
+
+```bash
+DEBUG=true python -m uvicorn app.main:app --reload
+```
+
+## 🔧 Development
+
+### Adding New Features
+
+1. Create feature branch
+2. Add service logic in `app/services/`
+3. Add API endpoint in `app/api/routes/`
+4. Update Pydantic schemas in `app/models/schemas.py`
+5. Add frontend page in `frontend/pages/`
+6. Update documentation
+
+### Code Style
+
+- Follow PEP 8 guidelines
+- Use type hints throughout
+- Add comprehensive docstrings
+- Implement proper error handling
+
+### Testing
+
+```bash
+# Run manual tests
+python verify_setup.py
+
+# Check code quality
+ruff check .
+```
+
+## 📈 Performance
+
+### Optimization Tips
+
+- Use streaming for large responses
+- Implement caching for repeated queries
+- Optimize vector search parameters
+- Use batch processing for multiple files
+
+### Monitoring
+
+- Check application logs in `logs/`
+- Monitor Qdrant memory usage
+- Track API response times
+- Monitor file upload sizes
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Update documentation
+6. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For support and questions:
+
+1. Check the troubleshooting section
+2. Review application logs
+3. Verify configuration settings
+4. Check API documentation at `/docs`
+
+## 🔄 Version History
+
+- **v1.0.0**: Initial release with core functionality
+  - Invoice analysis with Gemini LLM
+  - Vector storage with Qdrant
+  - RAG chatbot interface
+  - Streamlit frontend
+  - Comprehensive API
+
+## 📚 Additional Resources
+
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Streamlit Documentation](https://docs.streamlit.io/)
+- [Qdrant Documentation](https://qdrant.tech/documentation/)
+- [Gemini API Documentation](https://ai.google.dev/docs)
+- [LangChain Documentation](https://python.langchain.com/)
 
 ---
 
-#### Built with ❤️ using FastAPI, LangChain, and modern AI technologies
+Made with ❤️ using Python, FastAPI, and AI technologies
