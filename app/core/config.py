@@ -75,7 +75,7 @@ class Settings(BaseSettings):
         description="Name of the Qdrant collection",
     )
     EMBEDDING_MODEL: str = Field(
-        default="all-MiniLM-L6-v2",
+        default="sentence-transformers/all-MiniLM-L6-v2",
         description="Sentence transformer model for embeddings",
     )
     VECTOR_SIZE: int = Field(default=384, gt=0, description="Size of embedding vectors")

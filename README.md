@@ -1,106 +1,143 @@
-# 📄 Invoice Reimbursement System
+# 📄 Invoice Reimbursement RAG System
 
-A comprehensive AI-powered invoice reimbursement analysis system built with FastAPI, LangChain, and Gemini LLM. This system uses RAG (Retrieval Augmented Generation) to analyze invoice documents against HR policies and provides an intelligent chatbot interface for querying processed invoices.
+A comprehensive AI-powered invoice reimbursement analysis system built with FastAPI, LangChain, and Google Gemini LLM. This system uses RAG (Retrieval Augmented Generation) to intelligently analyze invoice documents against HR policies and provides an interactive chatbot interface for querying processed invoices.
 
-## 🚀 Features
+## ✨ Key Features
 
-- **Intelligent Invoice Analysis**: Analyze PDF invoices against HR reimbursement policies using Gemini LLM
-- **Vector-Based Storage**: Store and retrieve invoice embeddings using Qdrant vector database
-- **RAG Chatbot**: Interactive chatbot for querying processed invoices using natural language
-- **Batch Processing**: Process multiple invoices at once via ZIP file upload
-- **Duplicate Detection**: Prevent duplicate processing of the same invoices
-- **Streaming Responses**: Real-time streaming for both analysis and chat responses
-- **Modern UI**: Clean, responsive Streamlit frontend with session management
-- **Comprehensive API**: RESTful API with FastAPI for backend operations
+- **🤖 Intelligent Invoice Analysis**: Analyze PDF invoices against HR reimbursement policies using Google Gemini LLM
+- **🔍 Vector-Based Storage**: Store and retrieve invoice embeddings using Qdrant vector database
+- **💬 RAG-Powered Chatbot**: Interactive chatbot for querying processed invoices using natural language
+- **📦 Batch Processing**: Process multiple invoices simultaneously via ZIP file upload
+- **🔄 Duplicate Detection**: Prevent duplicate processing of the same invoices
+- **⚡ Streaming Responses**: Real-time streaming for both analysis and chat responses
+- **🎨 Modern UI**: Clean, responsive Streamlit frontend with session management
+- **🚀 RESTful API**: Comprehensive FastAPI backend with automatic documentation
+- **🐳 Docker Ready**: Complete containerization with Docker Compose
+- **📊 Comprehensive Logging**: Structured logging with file rotation and monitoring
 
-## 🏗️ Architecture
+## 🏗️ System Architecture
 
-```text
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Streamlit UI   │    │   FastAPI API   │    │  Gemini LLM     │
-│  (Frontend)     │◄──►│   (Backend)     │◄──►│  (Analysis)     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │  Qdrant Vector  │    │  PDF Processor  │
-                       │  Database       │    │  (Text Extract) │
-                       └─────────────────┘    └─────────────────┘
+```mermaid
+graph TD
+    subgraph "User Interaction"
+        User(["fa:fa-user User"])
+        UI["fa:fa-desktop Streamlit UI<br/>(Frontend)"]
+    end
+
+    subgraph "Application Backend"
+        BE["fa:fa-server FastAPI API"]
+        EM["fa:fa-atom Embedding Model<br/>(Sentence-Transformer)"]
+    end
+
+    subgraph "External Services"
+        LLM["fa:fa-brain Google Gemini<br/>(LLM Engine)"]
+        VDB["fa:fa-database Qdrant<br/>(Vector Database)"]
+    end
+
+    %% Define Connections
+    User -- "Interacts with" --> UI
+    UI   <-- "API Calls" --> BE
+    
+    BE -- "1 Creates Embeddings" --> EM
+    BE -- "2 Analyzes Text (RAG)" --> LLM
+    BE <-- "3 Retrieves Vectors" --> VDB
+    BE -- "4 Stores Vectors" --> VDB
+
+    %% Define Styling
+    style User fill:#A78BFA,stroke:#FFF,stroke-width:2px,color:#FFF
+    style UI fill:#3B82F6,stroke:#FFF,stroke-width:2px,color:#FFF
+    style BE fill:#10B981,stroke:#FFF,stroke-width:2px,color:#FFF
+    style EM fill:#F59E0B,stroke:#FFF,stroke-width:2px,color:#FFF
+    style LLM fill:#EF4444,stroke:#FFF,stroke-width:2px,color:#FFF
+    style VDB fill:#6366F1,stroke:#FFF,stroke-width:2px,color:#FFF
 ```
 
-## 🛠️ Tech Stack
+### Data Flow
 
-### Backend
+1. **Upload**: Users upload HR policies and invoices (PDF/ZIP)
+2. **Processing**: PDF text extraction and chunking
+3. **Embedding**: Generate vector embeddings using Sentence Transformers
+4. **Storage**: Store embeddings in Qdrant vector database
+5. **Analysis**: Gemini LLM analyzes invoices against policies
+6. **RAG**: Chatbot uses retrieval-augmented generation for queries
 
-- **FastAPI**: Modern, fast web framework for building APIs
+## 🛠️ Technology Stack
+
+### Core Backend
+
+- **FastAPI**: Modern, fast web framework for building APIs with automatic documentation
 - **LangChain**: Framework for developing applications with LLMs
-- **Gemini**: Google's advanced LLM for invoice analysis
-- **Qdrant**: Vector database for storing and retrieving embeddings
-- **Sentence-Transformers**: For generating text embeddings
-- **PyPDF2**: PDF text extraction
-- **Pydantic**: Data validation and serialization
+- **Google Gemini**: Advanced LLM for intelligent invoice analysis
+- **Qdrant**: High-performance vector database for storing and retrieving embeddings
+- **Sentence-Transformers**: Generate high-quality text embeddings (all-MiniLM-L6-v2)
+- **PyPDF2**: Robust PDF text extraction and processing
+- **Pydantic**: Data validation, serialization, and type safety
 
-### Frontend
+### Frontend & UI
 
-- **Streamlit**: Web application framework for data science
-- **Streamlit-Chat**: Chat interface components
+- **Streamlit**: Interactive web application framework for data science
+- **Streamlit-Chat**: Enhanced chat interface components for conversational UI
 
-### Infrastructure
+### Infrastructure & DevOps
 
-- **Docker & Docker Compose**: Complete containerization solution
-- **Qdrant**: Vector database (containerized)
-- **Multi-stage Docker builds**: Optimized production images
-- **Health checks**: Automated service monitoring
+- **Docker & Docker Compose**: Complete containerization and orchestration solution
+- **Multi-stage Docker builds**: Optimized production-ready images
+- **Health checks**: Automated service monitoring and status validation
+- **Nginx** (optional): Reverse proxy and load balancing for production
 
-## 🐳 Docker Deployment (Recommended)
+### AI & Machine Learning
 
-The easiest way to run the Invoice Reimbursement System is using Docker. This method handles all dependencies and services automatically.
+- **Google Generative AI**: Integration with Gemini models
+- **Embedding Models**: Sentence transformers for semantic search
+- **Vector Search**: Similarity search and retrieval capabilities
+- **RAG Pipeline**: Retrieval-Augmented Generation for contextual responses
+
+## � Quick Start Guide
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) (v20.10 or higher)
-- [Docker Compose](https://docs.docker.com/compose/install/) (v2.0 or higher)
-- At least 4GB RAM available for Docker
-- [Gemini API Key](https://aistudio.google.com/app/apikey)
+- [Docker](https://docs.docker.com/get-docker/)  & [Docker Compose](https://docs.docker.com/compose/install/)
+- At least 4GB RAM available for Docker containers
+- [Google Gemini API Key](https://aistudio.google.com/app/apikey)
 
-### Quick Start with Docker
+### Option 1: Docker Setup (Recommended) 🐳
 
-1. **Clone the repository**:
+1. **Clone and setup**:
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/AmanSikarwar/Reimbursement_RAG.git
    cd Reimbursement_RAG
-   ```
-
-2. **Set up environment variables**:
-
-   ```bash
-   # Copy the environment template
-   cp .env.example .env
    
-   # Edit .env and add your Gemini API key
-   nano .env  # or use your preferred editor
+   # Create environment file
+   cp .env.example .env
    ```
 
-3. **Run the complete setup**:
+2. **Configure your API key**:
 
    ```bash
-   # Make the setup script executable and run it
+   # Edit .env file and add your Gemini API key
+   echo "GOOGLE_API_KEY=your_actual_api_key_here" >> .env
+   ```
+
+3. **Start everything with one command**:
+
+   ```bash
+   # Make setup script executable and run
    chmod +x docker-setup.sh
    ./docker-setup.sh setup
    ```
 
-   This single command will:
-   - Check Docker installation
-   - Build all necessary images
-   - Start all services (Qdrant, Backend, Frontend)
-   - Perform health checks
+4. **Access your application**:
 
-4. **Access the application**:
-   - **Frontend**: <http://localhost:8501>
-   - **Backend API**: <http://localhost:8000>
-   - **API Documentation**: <http://localhost:8000/docs>
-   - **Qdrant Dashboard**: <http://localhost:6333/dashboard>
+- 🎯 **Main App**: <http://localhost:8501>
+- 🔧 **API Docs**: <http://localhost:8000/docs>  
+- 📊 **Qdrant**: <http://localhost:6333/dashboard>
+
+### Option 2: Local Development Setup 💻
+
+- **Backend API**: <http://localhost:8000>
+- **API Documentation**: <http://localhost:8000/docs>
+- **Qdrant Dashboard**: <http://localhost:6333/dashboard>
 
 ### Docker Management Commands
 
@@ -155,11 +192,6 @@ The Docker setup includes three main services:
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
-### Development vs Production
-
-- **Production mode** (`docker-compose.yml`): Optimized images, no hot reload
-- **Development mode** (`docker-compose.dev.yml`): Code mounting, hot reload enabled
-
 ### Troubleshooting Docker Setup
 
 **Services not starting:**
@@ -207,7 +239,7 @@ If you prefer to run without Docker, follow these steps:
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/AmanSikarwar/Reimbursement_RAG.git
 cd Reimbursement_RAG
 ```
 
@@ -307,51 +339,95 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 python -m streamlit run streamlit_app.py --server.port 8501
 ```
 
-## 📱 Usage
+## 🎯 How to Use the System
 
-### 1. Access the Application
+### 1. Invoice Analysis Workflow
 
-- **Frontend**: <http://localhost:8501>
-- **Backend API**: <http://localhost:8000>
-- **API Documentation**: <http://localhost:8000/docs>
+1. **Navigate** to the "📄 Invoice Analysis" page in the Streamlit interface
+2. **Enter** the employee name for the reimbursement request
+3. **Upload** the HR reimbursement policy document (PDF format)
+4. **Upload** invoice documents:
+   - Single PDF file, or
+   - ZIP file containing multiple PDF invoices
+5. **Click** "🔍 Start Analysis" to begin processing
+6. **Review** the detailed analysis results with:
+   - Approval/rejection decisions
+   - Reimbursement amounts
+   - Policy compliance notes
+   - Detailed reasoning
 
-### 2. Invoice Analysis
+### 2. Chat with Invoices
 
-1. Navigate to the "📄 Invoice Analysis" page
-2. Enter employee name
-3. Upload HR reimbursement policy (PDF)
-4. Upload invoices (ZIP file containing PDFs)
-5. Click "🔍 Start Analysis"
-6. View results with detailed breakdown
+1. **Navigate** to the "💬 Chat with Invoices" page
+2. **Ask questions** about your processed invoices using natural language:
+   - *"Show me all declined invoices for John"*
+   - *"What invoices were submitted last month?"*
+   - *"List all partially reimbursed expenses"*
+   - *"Why was invoice #12345 rejected?"*
+3. **Get instant responses** powered by RAG technology
+4. **Explore** invoice data conversationally
 
-### 3. Chat with Invoices
+### 3. Advanced Features
 
-1. Navigate to the "💬 Chat with Invoices" page
-2. Ask questions about processed invoices
-3. Use natural language queries like:
-   - "Show me all declined invoices"
-   - "What invoices did John submit?"
-   - "List all partially reimbursed expenses"
+- **Batch Processing**: Upload ZIP files with multiple invoices
+- **Session Management**: Chat history is maintained per session
+- **Streaming Responses**: Real-time response generation
+- **Detailed Logging**: Full audit trail of all operations
 
-## 🔍 API Endpoints
+## � API Reference
 
-### Health Check
+### Base URLs
 
-- `GET /health` - Application health status
-- `GET /api/v1/health/detailed` - Detailed health check
+- **Production**: `http://localhost:8000`
+- **API Documentation**: `http://localhost:8000/docs` (Swagger UI)
+- **Alternative Docs**: `http://localhost:8000/redoc` (ReDoc)
 
-### Invoice Analysis
+### Core Endpoints
 
-- `POST /api/v1/analyze-invoices` - Analyze invoices against policy
-- `POST /api/v1/analyze-invoices-stream` - Streaming analysis
-- `GET /api/v1/analysis-status` - Get analysis status
+#### Health & Status
 
-### Chatbot
+| Endpoint | Method | Description | Response |
+|----------|--------|-------------|----------|
+| `/health` | GET | Basic health check | `{"status": "healthy"}` |
+| `/api/v1/health/detailed` | GET | Detailed system status | Health details with dependencies |
 
-- `POST /api/v1/chat` - Chat with processed invoices
-- `POST /api/v1/chat/stream` - Streaming chat responses
-- `GET /api/v1/chat/history/{session_id}` - Get chat history
-- `DELETE /api/v1/chat/history/{session_id}` - Clear chat history
+#### Invoice Analysis
+
+| Endpoint | Method | Description | Body |
+|----------|--------|-------------|------|
+| `/api/v1/analyze-invoices` | POST | Analyze invoices against policy | Multipart form with files |
+| `/api/v1/analyze-invoices-stream` | POST | Streaming analysis responses | Multipart form with files |
+
+#### Chatbot & RAG
+
+| Endpoint | Method | Description | Parameters |
+|----------|--------|-------------|------------|
+| `/api/v1/chat` | POST | Query processed invoices | `{"message": "your question"}` |
+| `/api/v1/chat/stream` | POST | Streaming chat responses | `{"message": "your question"}` |
+| `/api/v1/chat/history/{session_id}` | GET | Retrieve chat history | Session ID in path |
+| `/api/v1/chat/history/{session_id}` | DELETE | Clear chat history | Session ID in path |
+
+### Request Examples
+
+#### Analyze Invoices
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/analyze-invoices" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "employee_name=John Doe" \
+  -F "policy_file=@policy.pdf" \
+  -F "invoice_files=@invoices.zip"
+```
+
+#### Chat Query
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/chat" \
+  -H "accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Show me all rejected invoices"}'
+```
 
 ## 📁 Project Structure
 
@@ -391,26 +467,34 @@ Reimbursement_RAG/
 ├── requirements.txt              # Python dependencies
 ├── .env.example                  # Environment variables template
 ├── streamlit_app.py              # Entry point for Streamlit
-├── verify_setup.py               # Setup verification script
-└── check_setup.py                # Configuration check script
 ```
 
-## ⚙️ Configuration
+## ⚙️ Configuration & Environment Variables
 
-### Environment Variables
+### Required Configuration
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `GOOGLE_API_KEY` | Google Gemini API key | - | ✅ |
-| `QDRANT_URL` | Qdrant database URL | `http://localhost:6333` | ✅ |
-| `QDRANT_API_KEY` | Qdrant API key | - | 🔄 |
-| `DEBUG` | Enable debug mode | `false` | ❌ |
-| `LOG_LEVEL` | Logging level | `INFO` | ❌ |
-| `COLLECTION_NAME` | Qdrant collection name | `invoice_reimbursements` | ❌ |
-| `EMBEDDING_MODEL` | Sentence transformer model | `all-MiniLM-L6-v2` | ❌ |
-| `MAX_FILE_SIZE` | Max upload size (MB) | `50` | ❌ |
-| `LLM_MODEL` | Gemini model name | `gemini-2.5-flash` | ❌ |
-| `LLM_TEMPERATURE` | LLM temperature | `0.1` | ❌ |
+Create a `.env` file from the template:
+
+```bash
+cp .env.example .env
+```
+
+### Environment Variables Reference
+
+| Variable | Description | Default | Required | Example |
+|----------|-------------|---------|----------|---------|
+| `GOOGLE_API_KEY` | Google Gemini API key | - | ✅ | `AIzaSyC...` |
+| `QDRANT_URL` | Qdrant database URL | `http://localhost:6333` | ✅ | `http://localhost:6333` |
+| `QDRANT_API_KEY` | Qdrant API key (cloud only) | - | 🔄 | `your-api-key` |
+| `APP_NAME` | Application name | `Invoice Reimbursement System` | ❌ | `My Invoice App` |
+| `DEBUG` | Enable debug mode | `false` | ❌ | `true` |
+| `LOG_LEVEL` | Logging level | `INFO` | ❌ | `DEBUG` |
+| `COLLECTION_NAME` | Qdrant collection name | `invoice_reimbursements` | ❌ | `my_invoices` |
+| `EMBEDDING_MODEL` | Sentence transformer model | `all-MiniLM-L6-v2` | ❌ | `all-mpnet-base-v2` |
+| `MAX_FILE_SIZE` | Max upload size (MB) | `50` | ❌ | `100` |
+| `LLM_MODEL` | Gemini model name | `gemini-2.5-flash` | ❌ | `gemini-1.5-pro` |
+| `LLM_TEMPERATURE` | LLM creativity (0.0-1.0) | `0.1` | ❌ | `0.3` |
+| `ALLOWED_HOSTS` | Comma-separated hosts | `*` | ❌ | `localhost,mydomain.com` |
 
 ### VS Code Tasks
 
@@ -430,175 +514,3 @@ The application uses structured logging with:
 - **File Logging**: Logs stored in `logs/` directory
 - **Console Logging**: Development-friendly console output
 - **Log Rotation**: Daily log file rotation
-- **Structured Format**: JSON-formatted logs for production
-
-## 🔒 Security
-
-### Production Considerations
-
-- Set `DEBUG=false` in production
-- Configure specific `ALLOWED_HOSTS`
-- Use environment variables for all secrets
-- Implement proper authentication/authorization
-- Use HTTPS in production
-- Secure file upload validation
-
-### File Upload Security
-
-- File type validation
-- File size limits
-- Sanitized file names
-- Secure storage paths
-
-## 🧪 Testing
-
-### Verify Installation
-
-```bash
-python verify_setup.py
-```
-
-### Check Configuration
-
-```bash
-python check_setup.py
-```
-
-### Manual Testing
-
-1. Start the application
-2. Upload sample invoices
-3. Test chat functionality
-4. Verify vector storage
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### 1. Qdrant Connection Error
-
-```bash
-# Check if Qdrant is running
-docker ps | grep qdrant
-
-# Restart Qdrant
-docker restart qdrant
-```
-
-#### 2. Gemini API Error
-
-- Verify `GOOGLE_API_KEY` in `.env`
-- Check API key permissions
-- Ensure billing is enabled
-
-#### 3. Import Errors
-
-```bash
-# Reinstall dependencies
-pip install --force-reinstall -r requirements.txt
-```
-
-#### 4. Port Already in Use
-
-```bash
-# Kill process on port 8000
-lsof -ti:8000 | xargs kill -9
-
-# Or use different port
-uvicorn app.main:app --port 8001
-```
-
-### Debug Mode
-
-Enable debug mode for detailed logging:
-
-```bash
-DEBUG=true python -m uvicorn app.main:app --reload
-```
-
-## 🔧 Development
-
-### Adding New Features
-
-1. Create feature branch
-2. Add service logic in `app/services/`
-3. Add API endpoint in `app/api/routes/`
-4. Update Pydantic schemas in `app/models/schemas.py`
-5. Add frontend page in `frontend/pages/`
-6. Update documentation
-
-### Code Style
-
-- Follow PEP 8 guidelines
-- Use type hints throughout
-- Add comprehensive docstrings
-- Implement proper error handling
-
-### Testing
-
-```bash
-# Run manual tests
-python verify_setup.py
-
-# Check code quality
-ruff check .
-```
-
-## 📈 Performance
-
-### Optimization Tips
-
-- Use streaming for large responses
-- Implement caching for repeated queries
-- Optimize vector search parameters
-- Use batch processing for multiple files
-
-### Monitoring
-
-- Check application logs in `logs/`
-- Monitor Qdrant memory usage
-- Track API response times
-- Monitor file upload sizes
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Update documentation
-6. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-For support and questions:
-
-1. Check the troubleshooting section
-2. Review application logs
-3. Verify configuration settings
-4. Check API documentation at `/docs`
-
-## 🔄 Version History
-
-- **v1.0.0**: Initial release with core functionality
-  - Invoice analysis with Gemini LLM
-  - Vector storage with Qdrant
-  - RAG chatbot interface
-  - Streamlit frontend
-  - Comprehensive API
-
-## 📚 Additional Resources
-
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [Streamlit Documentation](https://docs.streamlit.io/)
-- [Qdrant Documentation](https://qdrant.tech/documentation/)
-- [Gemini API Documentation](https://ai.google.dev/docs)
-- [LangChain Documentation](https://python.langchain.com/)
-
----
-
-Made with ❤️ using Python, FastAPI, and AI technologies

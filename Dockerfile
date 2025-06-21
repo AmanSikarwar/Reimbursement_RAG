@@ -34,7 +34,10 @@ FROM python:3.12-slim as production
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH="/app" \
-    PORT=8000
+    PORT=8000 \
+    HF_HOME="/app/.cache/huggingface" \
+    TRANSFORMERS_CACHE="/app/.cache/transformers" \
+    SENTENCE_TRANSFORMERS_HOME="/app/.cache/sentence-transformers"
 
 # Install runtime system dependencies
 RUN apt-get update && apt-get install -y \
@@ -47,7 +50,7 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Create app directory and subdirectories
 WORKDIR /app
-RUN mkdir -p /app/uploads /app/logs && \
+RUN mkdir -p /app/uploads /app/logs /app/.cache/huggingface /app/.cache/transformers /app/.cache/sentence-transformers && \
     chown -R appuser:appuser /app
 
 # Copy Python packages from builder stage
