@@ -10,7 +10,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.models.schemas import ChatMessage, DocumentSource, SearchFilters
+from app.models.schemas import (
+    ChatMessage,
+    DocumentSource,
+    ReimbursementStatus,
+    SearchFilters,
+)
 from app.services.llm_service import LLMService
 from app.services.vector_store import VectorStoreService
 
@@ -391,11 +396,20 @@ class ChatbotService:
             content = doc.get("content", "")
             excerpt = content[:200] + "..." if len(content) > 200 else content
 
+            raw_status = metadata.get("status", "declined")
+            if raw_status == "unknown":
+                raw_status = "declined"
+
+            try:
+                status = ReimbursementStatus(raw_status)
+            except ValueError:
+                status = ReimbursementStatus.DECLINED
+
             source = DocumentSource(
                 document_id=doc.get("id", ""),
                 filename=metadata.get("invoice_filename", "Unknown"),
                 employee_name=metadata.get("employee_name", "Unknown"),
-                status=metadata.get("status", "unknown"),
+                status=status,
                 similarity_score=doc.get("score", 0.0),
                 excerpt=excerpt,
             )

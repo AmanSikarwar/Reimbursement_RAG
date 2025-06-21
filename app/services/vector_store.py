@@ -85,7 +85,6 @@ class VectorStoreService:
                 "Vector size not initialized. Ensure embedding model is loaded first."
             )
 
-        # Create new collection
         self.client.create_collection(
             collection_name=self.collection_name,
             vectors_config=VectorParams(
@@ -640,7 +639,7 @@ class VectorStoreService:
             Document ID of the stored policy
         """
         try:
-            doc_id = f"policy_{policy_name}_{str(uuid.uuid4())[:8]}"
+            doc_id = str(uuid.uuid4())
 
             embedding = await asyncio.get_event_loop().run_in_executor(
                 None, self._generate_embedding, policy_text

@@ -129,21 +129,70 @@ def get_theme_css():
     .stTextInput > div > div > input,
     .stTextInput input,
     [data-testid="stTextInput"] input,
-    input[type="text"] {
+    [data-testid="textInput"] input,
+    [data-testid="stTextInput"] > div > div > input,
+    input[type="text"],
+    input[aria-label] {
         background: var(--background-light) !important;
         color: var(--text) !important;
         border: 1px solid var(--primary) !important;
         border-radius: 8px !important;
+        padding: 0.5rem 0.75rem !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stTextInput > div > div,
+    .stTextInput > div,
+    [data-testid="stTextInput"] > div,
+    [data-testid="textInput"] > div {
+        border: none !important;
+        background: transparent !important;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stTextInput input:focus,
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="textInput"] input:focus,
+    input[type="text"]:focus,
+    input[aria-label]:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3) !important;
+        outline: none !important;
+    }
+    
+    .stTextInput > div > div > input::placeholder,
+    [data-testid="stTextInput"] input::placeholder,
+    [data-testid="textInput"] input::placeholder,
+    input[type="text"]::placeholder {
+        color: var(--text-secondary) !important;
+        opacity: 0.7 !important;
     }
     
     .stSelectbox > div > div,
     .stSelectbox select,
     [data-testid="stSelectbox"] > div,
-    [data-testid="stSelectbox"] select {
+    [data-testid="stSelectbox"] select,
+    [data-testid="stSelectbox"] > div > div > div,
+    div[data-baseweb="select"] {
         background: var(--background-light) !important;
         border: 1px solid var(--primary) !important;
         border-radius: 8px !important;
         color: var(--text) !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stSelectbox > div,
+    [data-testid="stSelectbox"],
+    .stSelectbox {
+        border: none !important;
+        background: transparent !important;
+    }
+    
+    .stSelectbox > div > div:focus-within,
+    [data-testid="stSelectbox"] > div:focus-within,
+    div[data-baseweb="select"]:focus-within {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3) !important;
     }
     
     .stSelectbox option {
@@ -154,17 +203,127 @@ def get_theme_css():
     .stNumberInput > div > div > input,
     .stNumberInput input,
     [data-testid="stNumberInput"] input,
+    [data-testid="stNumberInput"] > div > div > input,
     input[type="number"] {
         background: var(--background-light) !important;
         color: var(--text) !important;
         border: 1px solid var(--primary) !important;
         border-radius: 8px !important;
+        padding: 0.5rem 0.75rem !important;
+        transition: all 0.3s ease !important;
     }
     
-    .stFileUploader {
-        border: 2px dashed var(--primary);
-        border-radius: 12px;
-        background: var(--background-light);
+    .stNumberInput > div > div,
+    .stNumberInput > div,
+    [data-testid="stNumberInput"] > div {
+        border: none !important;
+        background: transparent !important;
+    }
+    
+    .stNumberInput > div > div > input:focus,
+    .stNumberInput input:focus,
+    [data-testid="stNumberInput"] input:focus,
+    input[type="number"]:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3) !important;
+        outline: none !important;
+    }
+    
+    /* File Upload Styling */
+    .stFileUploader,
+    [data-testid="stFileUploader"],
+    [data-testid="fileUploader"] {
+        border: 1px dashed var(--primary) !important;
+        border-radius: 12px !important;
+        background: var(--background-light) !important;
+        padding: 1rem !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stFileUploader:hover,
+    [data-testid="stFileUploader"]:hover,
+    [data-testid="fileUploader"]:hover {
+        border-color: var(--accent) !important;
+        background: var(--background-lighter) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2) !important;
+    }
+    
+    .stFileUploader > div,
+    [data-testid="stFileUploader"] > div,
+    [data-testid="fileUploader"] > div {
+        background: transparent !important;
+        border: none !important;
+    }
+    
+    .stFileUploader label,
+    [data-testid="stFileUploader"] label,
+    [data-testid="fileUploader"] label {
+        color: var(--text) !important;
+        font-weight: 500 !important;
+    }
+    
+    .stFileUploader small,
+    [data-testid="stFileUploader"] small,
+    [data-testid="fileUploader"] small {
+        color: var(--text-secondary) !important;
+    }
+    
+    /* File Upload Button */
+    .stFileUploader button,
+    [data-testid="stFileUploader"] button,
+    [data-testid="fileUploader"] button,
+    button[kind="secondary"] {
+        background: var(--primary) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 6px !important;
+        padding: 0.5rem 1rem !important;
+        font-weight: 500 !important;
+        transition: all 0.3s ease !important;
+        cursor: pointer !important;
+    }
+    
+    .stFileUploader button:hover,
+    [data-testid="stFileUploader"] button:hover,
+    [data-testid="fileUploader"] button:hover,
+    button[kind="secondary"]:hover {
+        background: var(--primary-dark) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3) !important;
+    }
+    
+    /* File Upload Drop Zone */
+    .stFileUploader > div > div,
+    [data-testid="stFileUploader"] > div > div,
+    [data-testid="fileUploader"] > div > div {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 2rem !important;
+        text-align: center !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stFileUploader > div > div:hover,
+    [data-testid="stFileUploader"] > div > div:hover,
+    [data-testid="fileUploader"] > div > div:hover {
+        background: rgba(139, 92, 246, 0.05) !important;
+    }
+    
+    /* Drag and Drop Text */
+    .stFileUploader [data-testid="stFileDropzoneInstructions"],
+    [data-testid="stFileUploader"] [data-testid="stFileDropzoneInstructions"],
+    [data-testid="fileUploader"] [data-testid="stFileDropzoneInstructions"] {
+        color: var(--text) !important;
+        font-size: 1rem !important;
+    }
+    
+    .stFileUploader [data-testid="stFileDropzoneInstructions"] span,
+    [data-testid="stFileUploader"] [data-testid="stFileDropzoneInstructions"] span,
+    [data-testid="fileUploader"] [data-testid="stFileDropzoneInstructions"] span {
+        color: var(--accent) !important;
+        font-weight: 600 !important;
     }
     
     .stProgress > div > div > div {
@@ -527,6 +686,195 @@ def get_theme_css():
     
     div[style*="margin-bottom: 1rem; color: #D1D5DB"] {
         color: var(--text-secondary) !important;
+    }
+    
+    /* Additional Input Field Coverage */
+    div[data-baseweb="input"] {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 8px !important;
+    }
+    
+    div[data-baseweb="input"] input {
+        background: var(--background-light) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--primary) !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+    
+    div[data-baseweb="input"]:focus-within input {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3) !important;
+    }
+    
+    /* Form Labels */
+    .stFormSubmitButton,
+    [data-testid="stFormSubmitButton"] {
+        background: var(--primary) !important;
+    }
+    
+    .stFormSubmitButton button,
+    [data-testid="stFormSubmitButton"] button {
+        background: var(--primary) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stFormSubmitButton button:hover,
+    [data-testid="stFormSubmitButton"] button:hover {
+        background: var(--primary-dark) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3) !important;
+    }
+    
+    /* Input Focus States */
+    input:focus,
+    select:focus,
+    textarea:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3) !important;
+        outline: none !important;
+    }
+    
+    /* Generic Input Styling */
+    input[class*="st-"],
+    select[class*="st-"],
+    textarea[class*="st-"] {
+        background: var(--background-light) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--primary) !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+    
+    /* Modern Streamlit Component Selectors */
+    [data-testid*="input"],
+    [data-testid*="Input"],
+    [class*="input"],
+    [class*="Input"] {
+        background: transparent !important;
+        color: var(--text) !important;
+        border: none !important;
+        border-radius: 8px !important;
+    }
+    
+    [data-testid*="input"] input,
+    [data-testid*="Input"] input,
+    [class*="input"] input,
+    [class*="Input"] input {
+        background: var(--background-light) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--primary) !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+    
+    [data-testid*="input"]:focus-within,
+    [data-testid*="Input"]:focus-within,
+    [class*="input"]:focus-within,
+    [class*="Input"]:focus-within {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3) !important;
+    }
+    
+    /* File Upload Modern Selectors */
+    [data-testid*="fileUpload"],
+    [data-testid*="file-upload"],
+    [class*="fileUpload"],
+    [class*="file-upload"] {
+        border: 1px dashed var(--primary) !important;
+        border-radius: 12px !important;
+        background: var(--background-light) !important;
+    }
+    
+    [data-testid*="fileUpload"]:hover,
+    [data-testid*="file-upload"]:hover,
+    [class*="fileUpload"]:hover,
+    [class*="file-upload"]:hover {
+        border-color: var(--accent) !important;
+        background: var(--background-lighter) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1) !important;
+    }
+    
+    /* Button Modern Selectors */
+    [data-testid*="button"],
+    [data-testid*="Button"],
+    [class*="button"]:not(.nav-button),
+    [class*="Button"]:not(.nav-button) {
+        background: var(--primary) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    [data-testid*="button"]:hover,
+    [data-testid*="Button"]:hover,
+    [class*="button"]:not(.nav-button):hover,
+    [class*="Button"]:not(.nav-button):hover {
+        background: var(--primary-dark) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3) !important;
+    }
+    
+    /* Universal Input Styling - Fallback for any missed inputs */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+    select,
+    textarea {
+        background: var(--background-light) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--primary) !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 0.75rem !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+    select:focus,
+    textarea:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3) !important;
+        outline: none !important;
+    }
+    
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"])::placeholder,
+    textarea::placeholder {
+        color: var(--text-secondary) !important;
+        opacity: 0.7 !important;
+    }
+    
+    /* File input specific styling */
+    input[type="file"] {
+        background: var(--background-light) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--primary) !important;
+        border-radius: 8px !important;
+        padding: 0.5rem !important;
+    }
+    
+    /* Ensure all buttons follow theme */
+    button:not(.nav-button) {
+        background: var(--primary) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        padding: 0.5rem 1rem !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    button:not(.nav-button):hover {
+        background: var(--primary-dark) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3) !important;
     }
     </style>
     """
