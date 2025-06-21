@@ -26,6 +26,8 @@ from app.services.pdf_processor import PDFProcessor
 from app.services.vector_store import VectorStoreService
 from app.utils.file_utils import (
     extract_zip_file,
+    generate_file_hash_from_path,
+    generate_upload_file_hash,
     sanitize_filename,
     save_uploaded_file,
     validate_file,
@@ -81,28 +83,43 @@ async def analyze_invoices(
 
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Save and process policy file
-            policy_path = await save_uploaded_file(policy_file, temp_dir)
-            policy_text = await pdf_processor.extract_text(policy_path)
+            # Generate hash for policy file to check for duplicates
+            policy_hash = await generate_upload_file_hash(policy_file)
 
-            if not policy_text.strip():
-                raise HTTPException(
-                    status_code=400, detail="Could not extract text from policy PDF"
-                )
+            # Check if policy already exists in vector store
+            existing_policy = await vector_store.check_file_exists(
+                policy_hash, "policy"
+            )
 
-            # Store policy document in vector database for chatbot context
-            try:
-                await vector_store.store_policy_document(
-                    policy_text=policy_text,
-                    policy_name=f"HR_Policy_{employee_name}_{datetime.now().strftime('%Y%m%d')}",
-                    organization="Company",
-                )
+            if existing_policy:
                 logger.info(
-                    f"Policy document stored in vector database for {employee_name}"
+                    f"Policy file already exists in vector store with hash: {policy_hash}"
                 )
-            except Exception as e:
-                logger.warning(f"Failed to store policy in vector database: {e}")
-                # Don't fail the entire process if policy storage fails
+                policy_text = existing_policy.content
+            else:
+                # Save and process policy file
+                policy_path = await save_uploaded_file(policy_file, temp_dir)
+                policy_text = await pdf_processor.extract_text(policy_path)
+
+                if not policy_text.strip():
+                    raise HTTPException(
+                        status_code=400, detail="Could not extract text from policy PDF"
+                    )
+
+                # Store policy document in vector database for chatbot context
+                try:
+                    await vector_store.store_policy_document(
+                        policy_text=policy_text,
+                        policy_name=f"HR_Policy_{employee_name}_{datetime.now().strftime('%Y%m%d')}",
+                        organization="Company",
+                        file_hash=policy_hash,
+                    )
+                    logger.info(
+                        f"New policy document stored in vector database for {employee_name}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to store policy in vector database: {e}")
+                    # Don't fail the entire process if policy storage fails
 
             # Save and extract invoices ZIP file
             zip_path = await save_uploaded_file(invoices_zip, temp_dir)
@@ -201,6 +218,34 @@ async def _process_invoice(
     Returns:
         Dictionary containing analysis results
     """
+    # Generate hash for the invoice file to check for duplicates
+    invoice_hash = await generate_file_hash_from_path(invoice_path)
+
+    # Check if this invoice has already been processed for this employee
+    existing_invoice = await vector_store.check_invoice_exists(
+        invoice_hash, employee_name
+    )
+
+    if existing_invoice:
+        logger.info(
+            f"Invoice {os.path.basename(invoice_path)} already processed for {employee_name}"
+        )
+        # Return the existing analysis result
+        analysis_result = existing_invoice.metadata.get("analysis", {})
+        return {
+            "filename": os.path.basename(invoice_path),
+            "status": existing_invoice.metadata.get("status"),
+            "reason": existing_invoice.metadata.get("reason"),
+            "total_amount": existing_invoice.metadata.get("total_amount"),
+            "reimbursement_amount": existing_invoice.metadata.get(
+                "reimbursement_amount"
+            ),
+            "currency": existing_invoice.metadata.get("currency"),
+            "categories": existing_invoice.metadata.get("categories"),
+            "policy_violations": existing_invoice.metadata.get("policy_violations"),
+            "from_cache": True,  # Indicate this result came from cache
+        }
+
     # Extract text from invoice
     invoice_text = await pdf_processor.extract_text(invoice_path)
 
@@ -212,12 +257,13 @@ async def _process_invoice(
         invoice_text=invoice_text, policy_text=policy_text, employee_name=employee_name
     )
 
-    # Store in vector database
+    # Store in vector database with file hash
     await vector_store.store_invoice_analysis(
         invoice_text=invoice_text,
         analysis_result=analysis_result,
         employee_name=employee_name,
         invoice_filename=os.path.basename(invoice_path),
+        file_hash=invoice_hash,
     )
 
     return {
@@ -229,6 +275,7 @@ async def _process_invoice(
         "currency": analysis_result.get("currency"),
         "categories": analysis_result.get("categories"),
         "policy_violations": analysis_result.get("policy_violations"),
+        "from_cache": False,  # Indicate this is a new analysis
     }
 
 
@@ -319,40 +366,57 @@ async def analyze_invoices_streaming(
             # Create temporary directory for processing
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Process policy file
-                yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'extracting_policy'}).model_dump_json()}\n\n"
+                yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'checking_policy_duplicates'}).model_dump_json()}\n\n"
 
-                # Save policy file using pre-read content
-                policy_path = os.path.join(
-                    temp_dir, sanitize_filename(policy_filename or "policy.pdf")
-                )
+                # Generate hash for policy file to check for duplicates
+                from app.utils.file_utils import generate_file_hash
 
-                async with aiofiles.open(policy_path, "wb") as f:
-                    await f.write(policy_content)
+                policy_hash = await generate_file_hash(policy_content)
 
-                logger.info(f"Policy file saved: {policy_path}")
-                policy_text = await pdf_processor.extract_text(policy_path)
+                # Check if policy already exists in vector store
+                existing_policy = await vector_store.check_policy_exists(policy_hash)
 
-                if not policy_text.strip():
-                    error_chunk = InvoiceAnalysisStreamingChunk(
-                        type=InvoiceAnalysisStreamingChunkType.ERROR,
-                        data={"error": "Could not extract text from policy PDF"},
+                if existing_policy:
+                    yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'policy_duplicate_found', 'message': 'Policy already exists, using cached version'}).model_dump_json()}\n\n"
+                    policy_text = existing_policy.content
+                else:
+                    yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'extracting_policy'}).model_dump_json()}\n\n"
+
+                    # Save policy file using pre-read content
+                    policy_path = os.path.join(
+                        temp_dir, sanitize_filename(policy_filename or "policy.pdf")
                     )
-                    yield f"data: {error_chunk.model_dump_json()}\n\n"
-                    return
 
-                # Store policy document in vector database for chatbot context
-                try:
-                    await vector_store.store_policy_document(
-                        policy_text=policy_text,
-                        policy_name=f"HR_Policy_{employee_name}_{datetime.now().strftime('%Y%m%d')}",
-                        organization="Company",
-                    )
-                    logger.info(
-                        f"Policy document stored in vector database for {employee_name}"
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to store policy in vector database: {e}")
-                    # Don't fail the entire process if policy storage fails
+                    async with aiofiles.open(policy_path, "wb") as f:
+                        await f.write(policy_content)
+
+                    logger.info(f"Policy file saved: {policy_path}")
+                    policy_text = await pdf_processor.extract_text(policy_path)
+
+                    if not policy_text.strip():
+                        error_chunk = InvoiceAnalysisStreamingChunk(
+                            type=InvoiceAnalysisStreamingChunkType.ERROR,
+                            data={"error": "Could not extract text from policy PDF"},
+                        )
+                        yield f"data: {error_chunk.model_dump_json()}\n\n"
+                        return
+
+                    # Store new policy document in vector database for chatbot context
+                    try:
+                        await vector_store.store_policy_document(
+                            policy_text=policy_text,
+                            policy_name=f"HR_Policy_{employee_name}_{datetime.now().strftime('%Y%m%d')}",
+                            organization="Company",
+                            file_hash=policy_hash,
+                        )
+                        logger.info(
+                            f"New policy document stored in vector database for {employee_name}"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to store policy in vector database: {e}"
+                        )
+                        # Don't fail the entire process if policy storage fails
 
                 yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'completed', 'policy_length': len(policy_text)}).model_dump_json()}\n\n"
 
@@ -398,6 +462,49 @@ async def analyze_invoices_streaming(
                         # Update progress
                         progress.current_invoice = idx
                         progress.current_filename = filename
+                        progress.stage = "checking_duplicates"
+                        yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
+
+                        # Generate hash for the invoice file to check for duplicates
+                        invoice_hash = await generate_file_hash_from_path(invoice_path)
+
+                        # Check if this invoice has already been processed for this employee
+                        existing_invoice = await vector_store.check_invoice_exists(
+                            invoice_hash, employee_name
+                        )
+
+                        if existing_invoice:
+                            yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.INVOICE_ANALYSIS, data={'filename': filename, 'status': 'duplicate_found', 'message': 'Invoice already processed, returning cached result'}).model_dump_json()}\n\n"
+
+                            # Return the existing analysis result
+                            result_data = {
+                                "filename": filename,
+                                "status": existing_invoice.metadata.get("status"),
+                                "reason": existing_invoice.metadata.get("reason"),
+                                "total_amount": existing_invoice.metadata.get(
+                                    "total_amount"
+                                ),
+                                "reimbursement_amount": existing_invoice.metadata.get(
+                                    "reimbursement_amount"
+                                ),
+                                "currency": existing_invoice.metadata.get("currency"),
+                                "categories": existing_invoice.metadata.get(
+                                    "categories"
+                                ),
+                                "policy_violations": existing_invoice.metadata.get(
+                                    "policy_violations"
+                                ),
+                                "from_cache": True,
+                            }
+
+                            analysis_results.append(result_data)
+                            progress.processed_invoices += 1
+
+                            # Yield completed result
+                            yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.RESULT, data=result_data).model_dump_json()}\n\n"
+                            continue
+
+                        # Progress to text extraction since no duplicate found
                         progress.stage = "extracting_text"
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
 
@@ -436,7 +543,7 @@ async def analyze_invoices_streaming(
                         progress.stage = "storing"
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.PROGRESS, data=progress.model_dump()).model_dump_json()}\n\n"
 
-                        # Store in vector database
+                        # Store in vector database with file hash
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.VECTOR_STORAGE, data={'filename': filename, 'status': 'storing'}).model_dump_json()}\n\n"
 
                         await vector_store.store_invoice_analysis(
@@ -444,6 +551,7 @@ async def analyze_invoices_streaming(
                             analysis_result=analysis_result,
                             employee_name=employee_name,
                             invoice_filename=filename,
+                            file_hash=invoice_hash,
                         )
 
                         yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.VECTOR_STORAGE, data={'filename': filename, 'status': 'completed'}).model_dump_json()}\n\n"
@@ -462,6 +570,7 @@ async def analyze_invoices_streaming(
                             "policy_violations": analysis_result.get(
                                 "policy_violations"
                             ),
+                            "from_cache": False,
                         }
 
                         analysis_results.append(result_data)

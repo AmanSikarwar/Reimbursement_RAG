@@ -5,6 +5,7 @@ This module provides utilities for file handling, validation, and processing
 including upload validation, ZIP file extraction, and file management.
 """
 
+import hashlib
 import logging
 import os
 import tempfile
@@ -380,3 +381,48 @@ def get_upload_directory() -> str:
     upload_dir = settings.UPLOAD_DIRECTORY
     ensure_directory_exists(upload_dir)
     return upload_dir
+
+
+async def generate_file_hash(file_content: bytes) -> str:
+    """
+    Generate SHA-256 hash for file content.
+
+    Args:
+        file_content: Raw file content as bytes
+
+    Returns:
+        SHA-256 hash string
+    """
+    return hashlib.sha256(file_content).hexdigest()
+
+
+async def generate_file_hash_from_path(file_path: str) -> str:
+    """
+    Generate SHA-256 hash for a file at given path.
+
+    Args:
+        file_path: Path to the file
+
+    Returns:
+        SHA-256 hash string
+    """
+    async with aiofiles.open(file_path, "rb") as f:
+        content = await f.read()
+        return await generate_file_hash(content)
+
+
+async def generate_upload_file_hash(upload_file: UploadFile) -> str:
+    """
+    Generate SHA-256 hash for an UploadFile.
+
+    Args:
+        upload_file: FastAPI UploadFile object
+
+    Returns:
+        SHA-256 hash string
+    """
+    # Read the file content
+    content = await upload_file.read()
+    # Reset file pointer to beginning
+    await upload_file.seek(0)
+    return await generate_file_hash(content)

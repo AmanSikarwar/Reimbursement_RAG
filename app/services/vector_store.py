@@ -153,6 +153,7 @@ class VectorStoreService:
                 ("employee_name", PayloadSchemaType.KEYWORD),
                 ("doc_type", PayloadSchemaType.KEYWORD),
                 ("currency", PayloadSchemaType.KEYWORD),
+                ("file_hash", PayloadSchemaType.KEYWORD),  # Add file hash index
                 ("total_amount", PayloadSchemaType.FLOAT),
                 ("reimbursement_amount", PayloadSchemaType.FLOAT),
             ]
@@ -212,12 +213,126 @@ class VectorStoreService:
             self.logger.error(f"Error generating embedding: {e}")
             raise
 
+    async def check_file_exists(
+        self, file_hash: str, doc_type: str = "invoice_analysis"
+    ) -> Optional[VectorDocument]:
+        """
+        Check if a file with the given hash already exists in the vector store.
+
+        Args:
+            file_hash: SHA-256 hash of the file content
+            doc_type: Type of document to search for (default: "invoice_analysis")
+
+        Returns:
+            VectorDocument if file exists, None otherwise
+        """
+        try:
+            if not self.client:
+                raise ValueError("Qdrant client not initialized")
+
+            # Build filter for file hash and document type
+            filter_conditions = Filter(
+                must=[
+                    FieldCondition(key="file_hash", match=MatchValue(value=file_hash)),
+                    FieldCondition(key="doc_type", match=MatchValue(value=doc_type)),
+                ]
+            )
+
+            # Search for documents with this file hash
+            search_results = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=filter_conditions,
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            if search_results[0]:  # Points found
+                point = search_results[0][0]  # Get first point
+                payload = point.payload or {}
+
+                return VectorDocument(
+                    id=str(point.id),
+                    content=payload.get("content", ""),
+                    embedding=[],  # Empty embedding for exists check
+                    metadata=payload,
+                )
+
+            return None
+
+        except Exception as e:
+            self.logger.error(
+                f"Error checking file existence for hash {file_hash}: {e}"
+            )
+            return None
+
+    async def check_invoice_exists(
+        self, invoice_hash: str, employee_name: str
+    ) -> Optional[VectorDocument]:
+        """
+        Check if an invoice with the given hash already exists for the employee.
+
+        Args:
+            invoice_hash: SHA-256 hash of the invoice file content
+            employee_name: Name of the employee
+
+        Returns:
+            VectorDocument if invoice exists, None otherwise
+        """
+        try:
+            if not self.client:
+                raise ValueError("Qdrant client not initialized")
+
+            # Build filter for file hash, document type, and employee
+            filter_conditions = Filter(
+                must=[
+                    FieldCondition(
+                        key="file_hash", match=MatchValue(value=invoice_hash)
+                    ),
+                    FieldCondition(
+                        key="doc_type", match=MatchValue(value="invoice_analysis")
+                    ),
+                    FieldCondition(
+                        key="employee_name", match=MatchValue(value=employee_name)
+                    ),
+                ]
+            )
+
+            # Search for documents with this file hash and employee
+            search_results = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=filter_conditions,
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            if search_results[0]:  # Points found
+                point = search_results[0][0]  # Get first point
+                payload = point.payload or {}
+
+                return VectorDocument(
+                    id=str(point.id),
+                    content=payload.get("content", ""),
+                    embedding=[],  # Empty embedding for exists check
+                    metadata=payload,
+                )
+
+            return None
+
+        except Exception as e:
+            self.logger.error(
+                f"Error checking invoice existence for hash {invoice_hash}: {e}"
+            )
+            return None
+
     async def store_invoice_analysis(
         self,
         invoice_text: str,
         analysis_result: Dict[str, Any],
         employee_name: str,
         invoice_filename: str,
+        file_hash: Optional[str] = None,
     ) -> str:
         """
         Store invoice analysis in the vector database.
@@ -227,6 +342,7 @@ class VectorStoreService:
             analysis_result: LLM analysis result
             employee_name: Name of the employee
             invoice_filename: Original filename of the invoice
+            file_hash: Optional SHA-256 hash of the file content
 
         Returns:
             Document ID of the stored record
@@ -273,6 +389,7 @@ class VectorStoreService:
                 "policy_violations": analysis_result.get("policy_violations", []),
                 "date": datetime.now(timezone.utc).isoformat(),
                 "doc_type": "invoice_analysis",
+                "file_hash": file_hash,  # Add file hash to metadata
             }
 
             # Create point for storage
@@ -587,6 +704,7 @@ class VectorStoreService:
         policy_text: str,
         policy_name: str = "HR_Reimbursement_Policy",
         organization: str = "Company",
+        file_hash: Optional[str] = None,
     ) -> str:
         """
         Store HR policy document in the vector database for chatbot context.
@@ -595,6 +713,7 @@ class VectorStoreService:
             policy_text: Full text of the HR policy document
             policy_name: Name/identifier for the policy
             organization: Organization name
+            file_hash: Optional SHA-256 hash of the file content
 
         Returns:
             Document ID of the stored policy
@@ -615,6 +734,7 @@ class VectorStoreService:
                 "organization": organization,
                 "date": datetime.now(timezone.utc).isoformat(),
                 "content_type": "hr_reimbursement_policy",
+                "file_hash": file_hash,  # Add file hash to metadata
             }
 
             # Create point for storage
@@ -802,3 +922,15 @@ HR REIMBURSEMENT POLICY
         except Exception as e:
             self.logger.error(f"Error ensuring policy context: {e}")
             return False
+
+    async def check_policy_exists(self, policy_hash: str) -> Optional[VectorDocument]:
+        """
+        Check if a policy with the given hash already exists in the vector store.
+
+        Args:
+            policy_hash: SHA-256 hash of the policy file content
+
+        Returns:
+            VectorDocument if policy exists, None otherwise
+        """
+        return await self.check_file_exists(policy_hash, "policy")

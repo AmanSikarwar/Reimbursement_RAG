@@ -43,44 +43,41 @@ class InvoiceAnalysisRequest(BaseModel):
 class LLMInvoiceAnalysisResponse(BaseModel):
     """
     Structured schema for LLM invoice analysis responses.
-    
+
     This model defines the exact structure that the LLM must return
     to ensure consistent, parseable responses.
     """
-    
+
     status: ReimbursementStatus = Field(
-        ..., 
-        description="Reimbursement status - must be one of: fully_reimbursed, partially_reimbursed, declined"
+        ...,
+        description="Reimbursement status - must be one of: fully_reimbursed, partially_reimbursed, declined",
     )
     reason: str = Field(
-        ..., 
+        ...,
         min_length=10,
         max_length=1000,
-        description="Detailed explanation of the reimbursement decision"
+        description="Detailed explanation of the reimbursement decision",
     )
     total_amount: float = Field(
-        ..., 
+        ...,
         ge=0.0,
-        description="Total invoice amount extracted from the document - REQUIRED"
+        description="Total invoice amount extracted from the document - REQUIRED",
     )
     reimbursement_amount: float = Field(
-        ..., 
-        ge=0.0,
-        description="Amount to be reimbursed based on policy analysis"
+        ..., ge=0.0, description="Amount to be reimbursed based on policy analysis"
     )
     currency: str = Field(
-        ..., 
+        ...,
         min_length=3,
         max_length=3,
-        description="Currency code (INR, USD, EUR, etc.) - REQUIRED"
+        description="Currency code (INR, USD, EUR, etc.) - REQUIRED",
     )
     categories: List[str] = Field(
-        ..., 
-        description="Expense categories identified from the invoice - REQUIRED array"
+        ...,
+        description="Expense categories identified from the invoice - REQUIRED array",
     )
     policy_violations: Optional[List[str]] = Field(
-        default=None, 
-        description="List of policy violations, null if none found"
+        default=None, description="List of policy violations, null if none found"
     )
 
     @field_validator("currency")
@@ -88,7 +85,9 @@ class LLMInvoiceAnalysisResponse(BaseModel):
     def validate_currency(cls, v):
         """Validate currency code format."""
         if not v.isupper() or len(v) != 3:
-            raise ValueError("Currency must be a 3-letter uppercase code (e.g., INR, USD)")
+            raise ValueError(
+                "Currency must be a 3-letter uppercase code (e.g., INR, USD)"
+            )
         return v
 
     @field_validator("categories")
@@ -104,7 +103,7 @@ class LLMInvoiceAnalysisResponse(BaseModel):
     @classmethod
     def validate_reimbursement_amount(cls, v, info):
         """Validate that reimbursement amount doesn't exceed total amount."""
-        if 'total_amount' in info.data and v > info.data['total_amount']:
+        if "total_amount" in info.data and v > info.data["total_amount"]:
             raise ValueError("Reimbursement amount cannot exceed total amount")
         return v
 
@@ -117,7 +116,7 @@ class LLMInvoiceAnalysisResponse(BaseModel):
                 "reimbursement_amount": 2000.0,
                 "currency": "INR",
                 "categories": ["accommodation", "meals"],
-                "policy_violations": ["Alcohol expenses not reimbursable"]
+                "policy_violations": ["Alcohol expenses not reimbursable"],
             }
         }
 
@@ -138,6 +137,10 @@ class InvoiceAnalysisResult(BaseModel):
     )
     policy_violations: Optional[List[str]] = Field(
         None, description="Policy violations if any"
+    )
+    from_cache: Optional[bool] = Field(
+        None,
+        description="Whether this result was retrieved from cache (duplicate prevention)",
     )
 
 
