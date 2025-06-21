@@ -37,6 +37,25 @@ class ChatbotService:
         self.llm_service = llm_service
         self.logger = logger
 
+    async def initialize(self):
+        """
+        Initialize the chatbot service and ensure policy context is available.
+        """
+        try:
+            # Ensure policy documents are available in the vector store
+            policy_available = await self.vector_store.ensure_policy_context()
+
+            if policy_available:
+                self.logger.info("Chatbot service initialized with policy context")
+            else:
+                self.logger.warning(
+                    "Chatbot service initialized but policy context may be incomplete"
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error initializing chatbot service: {e}")
+            raise
+
     async def process_query(
         self,
         query: str,
@@ -60,15 +79,21 @@ class ChatbotService:
             # Analyze query to determine search strategy
             query_analysis = self._analyze_query(query, filters)
 
-            # Retrieve relevant documents
+            # Retrieve relevant documents (invoices)
             retrieved_docs = await self._retrieve_documents(
                 query, query_analysis["filters"], query_analysis["limit"]
             )
 
-            # Generate response using LLM
+            # Always include policy context for comprehensive responses
+            policy_context = await self._retrieve_policy_context(query)
+
+            # Combine invoice documents and policy context
+            all_context_docs = retrieved_docs + policy_context
+
+            # Generate response using LLM with combined context
             response = await self.llm_service.generate_chat_response(
                 query=query,
-                context_documents=retrieved_docs,
+                context_documents=all_context_docs,
                 conversation_history=self._format_conversation_history(
                     conversation_history
                 ),
@@ -77,17 +102,20 @@ class ChatbotService:
             # Generate related query suggestions
             suggestions = await self.llm_service.generate_query_suggestions(
                 original_query=query,
-                context_documents=retrieved_docs,
+                context_documents=all_context_docs,
                 query_type=query_analysis["type"],
             )
 
-            # Prepare sources information
-            sources = self._prepare_sources(retrieved_docs)
+            # Prepare sources information (separate invoice and policy sources)
+            invoice_sources = self._prepare_sources(retrieved_docs)
+            policy_sources = self._prepare_sources(policy_context)
 
             return {
                 "response": response,
-                "sources": sources,
+                "sources": invoice_sources,
+                "policy_sources": policy_sources,
                 "retrieved_documents": len(retrieved_docs),
+                "policy_documents": len(policy_context),
                 "query_type": query_analysis["type"],
                 "filters_applied": query_analysis["filters"],
                 "suggestions": suggestions,
@@ -134,15 +162,23 @@ class ChatbotService:
             # Analyze query to determine search strategy
             query_analysis = self._analyze_query(query, filters)
 
-            # Retrieve relevant documents
+            # Retrieve relevant documents (invoices)
             retrieved_docs = await self._retrieve_documents(
                 query, query_analysis["filters"], query_analysis["limit"]
             )
 
+            # Always include policy context for comprehensive responses
+            policy_context = await self._retrieve_policy_context(query)
+
+            # Combine invoice documents and policy context
+            all_context_docs = retrieved_docs + policy_context
+
             # Prepare metadata
             metadata = {
                 "sources": self._prepare_sources(retrieved_docs),
+                "policy_sources": self._prepare_sources(policy_context),
                 "retrieved_documents": len(retrieved_docs),
+                "policy_documents": len(policy_context),
                 "query_type": query_analysis["type"],
                 "filters_applied": query_analysis["filters"],
                 "processing_time_ms": int(
@@ -157,10 +193,10 @@ class ChatbotService:
             chunk_count = 0
             response_start_time = datetime.now()
 
-            # Generate streaming response using LLM
+            # Generate streaming response using LLM with combined context
             async for chunk in self.llm_service.generate_chat_response_streaming(
                 query=query,
-                context_documents=retrieved_docs,
+                context_documents=all_context_docs,
                 conversation_history=self._format_conversation_history(
                     conversation_history
                 ),
@@ -182,7 +218,7 @@ class ChatbotService:
                 suggestions = await asyncio.wait_for(
                     self.llm_service.generate_query_suggestions(
                         original_query=query,
-                        context_documents=retrieved_docs,
+                        context_documents=all_context_docs,
                         query_type=query_analysis["type"],
                     ),
                     timeout=10.0,  # 10 second timeout
@@ -269,6 +305,8 @@ class ChatbotService:
                 if word in ["for", "by"] and i + 1 < len(words):
                     # Extract potential employee name (next 1-2 words)
                     potential_name = " ".join(words[i + 1 : i + 3]).title()
+                    # Clean up punctuation marks from the name
+                    potential_name = potential_name.strip(".,!?:;")
                     if len(potential_name) > 2:  # Basic validation
                         analysis["filters"]["employee_name"] = potential_name
                         analysis["type"] = "employee_specific"
@@ -315,12 +353,16 @@ class ChatbotService:
             List of retrieved documents
         """
         try:
+            # Adjust score threshold based on whether filters are applied
+            # When filters are used, similarity scores tend to be lower
+            score_threshold = 0.1 if filters else 0.3
+
             # Perform vector search
             search_results = await self.vector_store.search_similar_invoices(
                 query_text=query,
                 filters=filters,
                 limit=limit,
-                score_threshold=0.3,  # Lower threshold for broader results
+                score_threshold=score_threshold,
             )
 
             # Convert search results to document format
@@ -345,7 +387,7 @@ class ChatbotService:
         self, conversation_history: Optional[List[ChatMessage]] = None
     ) -> List[Dict[str, str]]:
         """
-        Format conversation history for LLM consumption.
+        Format conversation history for LLM consumption with enhanced context awareness.
 
         Args:
             conversation_history: List of chat messages
@@ -357,7 +399,11 @@ class ChatbotService:
             return []
 
         formatted = []
-        for msg in conversation_history[-6:]:  # Keep last 3 exchanges
+
+        # Keep last 6 messages (3 exchanges) for better context
+        recent_messages = conversation_history[-6:]
+
+        for msg in recent_messages:
             formatted.append({"role": msg.role, "content": msg.content})
 
         return formatted
@@ -487,3 +533,155 @@ class ChatbotService:
         except Exception as e:
             self.logger.error(f"Error searching by status {status}: {e}")
             return []
+
+    def _query_needs_policy_context(self, query: str) -> bool:
+        """
+        Determine if a query might benefit from policy context.
+
+        Args:
+            query: User query
+
+        Returns:
+            True if the query likely needs policy information
+        """
+        query_lower = query.lower()
+
+        # Keywords that suggest policy-related queries
+        policy_keywords = [
+            "policy",
+            "rule",
+            "limit",
+            "maximum",
+            "minimum",
+            "allowed",
+            "eligible",
+            "reimbursable",
+            "not reimbursed",
+            "violation",
+            "guidelines",
+            "requirements",
+            "approval",
+            "criteria",
+            "what expenses",
+            "which expenses",
+            "how much",
+            "spending limit",
+            "per diem",
+            "allowance",
+            "procedure",
+            "process",
+            "documentation",
+        ]
+
+        return any(keyword in query_lower for keyword in policy_keywords)
+
+    async def _retrieve_policy_context(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Retrieve relevant policy context for the query.
+        Always tries to get policy context to provide comprehensive responses.
+
+        Args:
+            query: User query
+
+        Returns:
+            List of policy document excerpts
+        """
+        try:
+            # Search for relevant policy information with a lower threshold
+            # to ensure we always get some policy context when available
+            policy_results = await self.vector_store.search_policy_context(
+                query_text=query,
+                limit=2,  # Reduced to 2 to avoid overwhelming the context
+                score_threshold=0.1,  # Lower threshold to get more context
+            )
+
+            # Convert to document format
+            policy_docs = []
+            for result in policy_results:
+                doc_dict = {
+                    "id": result.document.id,
+                    "content": result.document.content,
+                    "metadata": result.document.metadata,
+                    "score": result.score,
+                    "type": "policy",
+                }
+                policy_docs.append(doc_dict)
+
+            self.logger.info(
+                f"Retrieved {len(policy_docs)} policy documents for context"
+            )
+            return policy_docs
+
+        except Exception as e:
+            self.logger.error(f"Error retrieving policy context: {e}")
+            return []
+
+    async def get_context_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of available context in the vector database.
+
+        Returns:
+            Dictionary containing context statistics and information
+        """
+        try:
+            # Get collection stats
+            stats = await self.vector_store.get_collection_stats()
+
+            # Count invoice documents
+            invoice_results = await self.vector_store.search_similar_invoices(
+                query_text="invoice analysis",
+                limit=1000,  # High limit to get count
+                score_threshold=0.0,
+            )
+
+            # Count policy documents
+            policy_results = await self.vector_store.search_policy_context(
+                query_text="policy",
+                limit=1000,  # High limit to get count
+                score_threshold=0.0,
+            )
+
+            # Get unique employees from invoice data
+            employees = set()
+            statuses = {"fully_reimbursed": 0, "partially_reimbursed": 0, "declined": 0}
+            total_amount = 0.0
+
+            for result in invoice_results:
+                metadata = result.document.metadata
+                if metadata.get("employee_name"):
+                    employees.add(metadata.get("employee_name"))
+
+                status = metadata.get("status", "")
+                if status in statuses:
+                    statuses[status] += 1
+
+                amount = metadata.get("total_amount", 0)
+                if isinstance(amount, (int, float)):
+                    total_amount += amount
+
+            return {
+                "collection_stats": stats,
+                "invoice_documents": len(invoice_results),
+                "policy_documents": len(policy_results),
+                "unique_employees": len(employees),
+                "employee_names": sorted(list(employees)),
+                "status_breakdown": statuses,
+                "total_invoice_amount": total_amount,
+                "context_coverage": {
+                    "has_invoices": len(invoice_results) > 0,
+                    "has_policies": len(policy_results) > 0,
+                    "full_context": len(invoice_results) > 0
+                    and len(policy_results) > 0,
+                },
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error getting context summary: {e}")
+            return {
+                "error": str(e),
+                "context_coverage": {
+                    "has_invoices": False,
+                    "has_policies": False,
+                    "full_context": False,
+                },
+            }

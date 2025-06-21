@@ -2,7 +2,7 @@
 Large Language Model Service.
 
 This service handles interactions with the Gemini LLM for invoice analysis
-and chatbot functionality.
+and chatbot functionality using structured output schemas.
 """
 
 import json
@@ -14,6 +14,7 @@ from google import genai
 from google.genai import types
 
 from app.core.config import settings
+from app.models.schemas import LLMInvoiceAnalysisResponse, ReimbursementStatus
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class LLMService:
         self, invoice_text: str, policy_text: str, employee_name: str
     ) -> Dict[str, Any]:
         """
-        Analyze an invoice against HR reimbursement policy.
+        Analyze an invoice against HR reimbursement policy using structured output.
 
         Args:
             invoice_text: Extracted text from the invoice PDF
@@ -68,11 +69,11 @@ class LLMService:
             # Combine system and user prompts
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-            # Get response from Gemini using the new SDK
-            response = await self._generate_response(full_prompt)
+            # Get structured response from Gemini using response schema
+            response = await self._generate_structured_invoice_response(full_prompt)
 
-            # Parse the response
-            analysis_result = self._parse_invoice_analysis_response(response)
+            # Convert Pydantic model to dict for API response
+            analysis_result = response.model_dump()
 
             self.logger.info(
                 f"Invoice analysis completed for {employee_name}: {analysis_result.get('status')}"
@@ -83,7 +84,7 @@ class LLMService:
             self.logger.error(f"Error analyzing invoice: {e}", exc_info=True)
             # Return a default error response
             return {
-                "status": "declined",
+                "status": ReimbursementStatus.DECLINED.value,
                 "reason": f"Error during analysis: {str(e)}",
                 "total_amount": 0.0,
                 "reimbursement_amount": 0.0,
@@ -94,12 +95,12 @@ class LLMService:
 
     def _get_invoice_analysis_prompt(self) -> str:
         """
-        Get the system prompt for invoice analysis.
+        Get the system prompt for structured invoice analysis.
 
         Returns:
-            System prompt for invoice analysis
+            System prompt for structured invoice analysis
         """
-        return """You are an expert invoice analyst for HR reimbursement processing. Your task is to analyze employee invoices against company reimbursement policies and determine the appropriate reimbursement status.
+        return """You are an expert invoice analyst for HR reimbursement processing. Your task is to analyze employee invoices against company reimbursement policies and provide a structured JSON response.
 
 ANALYSIS REQUIREMENTS:
 1. Carefully read the HR reimbursement policy provided
@@ -111,25 +112,35 @@ ANALYSIS REQUIREMENTS:
 7. ALWAYS extract the total amount and currency from the invoice
 8. ALWAYS identify expense categories based on the invoice content
 
-OUTPUT FORMAT:
-Return your analysis as a JSON object with the following structure:
+STRUCTURED OUTPUT REQUIREMENT:
+You MUST respond with a valid JSON object that matches this exact schema:
 {
     "status": "fully_reimbursed|partially_reimbursed|declined",
-    "reason": "Detailed explanation of the decision",
+    "reason": "Detailed explanation of the decision (10-1000 characters)",
     "total_amount": <total invoice amount as float - REQUIRED>,
     "reimbursement_amount": <amount to be reimbursed as float>,
-    "currency": "<currency code (INR, USD, EUR, etc.) - REQUIRED>",
-    "categories": ["<expense category 1>", "<expense category 2>"] - REQUIRED array,
+    "currency": "<3-letter currency code (INR, USD, EUR, etc.) - REQUIRED>",
+    "categories": ["<expense category 1>", "<expense category 2>"] - REQUIRED array with at least 1 item,
     "policy_violations": ["<violation 1>", "<violation 2>"] or null if none
 }
 
-IMPORTANT EXTRACTION RULES:
-- TOTAL_AMOUNT: Look for amounts like ₹233, $100, €50, Rs.150, etc. Extract the numeric value.
-- CURRENCY: Based on currency symbol: ₹ or Rs. = "INR", $ = "USD", € = "EUR", £ = "GBP"
-- CATEGORIES: Common categories include "travel", "meals", "office_supplies", "accommodation", "cab", "fuel", "communication", etc.
+CRITICAL EXTRACTION RULES:
+- TOTAL_AMOUNT: Look for amounts like ₹233, $100, €50, Rs.150, etc. Extract the numeric value. Must be >= 0.
+- REIMBURSEMENT_AMOUNT: Cannot exceed total_amount. Must be >= 0.
+- CURRENCY: Based on currency symbol: ₹ or Rs. = "INR", $ = "USD", € = "EUR", £ = "GBP". UPPERCASE only.
+- CATEGORIES: Common categories include "travel", "meals", "office_supplies", "accommodation", "cab", "fuel", "communication", etc. At least 1 required.
+- STATUS: Must be exactly one of: "fully_reimbursed", "partially_reimbursed", "declined"
 - If no amount is found, set total_amount to 0.0
 - If no currency symbol found, default to "INR" for Indian companies
 - Categories should be descriptive and based on expense type (e.g., ["travel", "cab"] for cab expenses)
+
+VALIDATION REQUIREMENTS:
+- All fields are mandatory except policy_violations
+- Currency must be exactly 3 uppercase letters
+- Categories array must contain at least 1 item
+- Amounts must be non-negative numbers
+- Reimbursement amount cannot exceed total amount
+- Status must match exactly one of the allowed values
 
 ANALYSIS GUIDELINES:
 - Be thorough and accurate in your analysis
@@ -138,7 +149,9 @@ ANALYSIS GUIDELINES:
 - Calculate partial reimbursements when some items are approved and others are not
 - Look for receipt dates, vendor information, and expense descriptions
 - Consider spending limits, approval requirements, and eligible expense types
-- Provide clear, professional reasoning that an HR representative could understand"""
+- Provide clear, professional reasoning that an HR representative could understand
+
+RESPONSE FORMAT: Return ONLY the JSON object, no additional text or formatting."""
 
     def _format_invoice_analysis_input(
         self, invoice_text: str, policy_text: str, employee_name: str
@@ -275,33 +288,66 @@ Please analyze this invoice against the HR policy and provide your assessment in
         Returns:
             System prompt for chatbot
         """
-        return """You are an intelligent assistant for an Invoice Reimbursement System. Your role is to help users query and understand invoice reimbursement data using the provided context documents.
+        return """You are an intelligent assistant for an Invoice Reimbursement System. Your role is to help users query and understand invoice reimbursement data using the provided context documents and conversation history.
 
 CAPABILITIES:
 - Answer questions about invoice reimbursement status and details
 - Search for specific invoices by employee name, date, amount, or status
-- Explain reimbursement decisions and policy violations
+- Explain reimbursement decisions and policy violations using BOTH invoice data and policy context
 - Provide summaries and statistics about processed invoices
 - Help users understand reimbursement policies and procedures
+- Maintain context across conversation turns
+- Reference previous questions and responses when relevant
+
+CONTEXT DOCUMENTS:
+You will receive two types of context documents:
+1. **Invoice Documents**: Specific invoice analysis results with employee data, amounts, status, etc.
+2. **Policy Documents**: HR reimbursement policy information that explains rules, limits, and procedures
+
+CONTEXT AWARENESS:
+- Pay attention to the conversation history for context
+- Reference previous queries when they're related to the current question
+- If a user asks follow-up questions, understand they may be referring to previous results
+- When showing data, remember what filters or criteria were mentioned before
+- Build upon previous responses rather than starting fresh each time
+- Use BOTH invoice data and policy information to provide comprehensive answers
 
 RESPONSE GUIDELINES:
-1. Always base your answers on the provided context documents
-2. Use markdown formatting for better readability
-3. Be accurate and cite specific information when available
-4. If you don't have enough information, clearly state this
-5. Provide helpful suggestions for alternative queries
-6. Maintain a professional and helpful tone
-7. Include relevant details like amounts, dates, and employee names
-8. Use tables or lists to organize information clearly
+1. Always base your answers on the provided context documents (both invoice and policy)
+2. When explaining WHY an invoice was declined/approved, reference relevant policy information
+3. Use conversation history to provide more relevant and contextual responses
+4. Use markdown formatting for better readability (tables, bold, lists)
+5. Be accurate and cite specific information when available
+6. If you don't have enough information, clearly state this
+7. Provide helpful suggestions for alternative queries
+8. Maintain a professional and helpful tone
+9. Include relevant details like amounts, dates, and employee names
+10. When showing invoice data, use clear tables with all relevant information
+11. Reference previous parts of the conversation when relevant
+12. When explaining policy violations, quote specific policy sections when available
+
+POLICY INTEGRATION:
+- When discussing declined invoices, explain the policy reasons
+- When asked about limits or rules, reference the policy documents
+- Help users understand what expenses are reimbursable vs. non-reimbursable
+- Explain approval processes and documentation requirements
+- Provide context about spending limits and categories
 
 RESPONSE FORMAT:
 - Use **bold** for important information like amounts and statuses
 - Use bullet points for lists
-- Use tables for structured data
+- Use tables for structured invoice data with columns: Employee Name, Invoice Name, Status, Amount, Date
 - Include relevant quotes from source documents when helpful
-- End with suggestions for related queries if appropriate
+- End with contextual suggestions based on current conversation
+- Use status emojis: ✅ (fully_reimbursed), ⚠️ (partially_reimbursed), ❌ (declined)
 
-Remember: Only provide information that can be found in the context documents. Do not make up or assume information."""
+CONTEXTUAL BEHAVIOR:
+- If user asks "Show me more" or similar, reference previous query context
+- If user mentions "these invoices", refer to previously discussed data
+- Build progressive understanding through the conversation
+- Provide more detailed analysis when users drill down into specific areas
+
+Remember: Only provide information that can be found in the context documents. Use conversation history to provide more relevant and contextual responses."""
 
     def _format_chat_input(
         self,
@@ -322,48 +368,113 @@ Remember: Only provide information that can be found in the context documents. D
         """
         prompt_parts = []
 
-        # Add conversation history if available
+        # Add conversation history if available with context enhancement
         if conversation_history:
             prompt_parts.append("CONVERSATION HISTORY:")
+            prompt_parts.append(
+                "(Use this to understand context and provide relevant follow-up responses)"
+            )
             for msg in conversation_history[-6:]:  # Include last 3 exchanges
                 role = msg.get("role", "unknown")
                 content = msg.get("content", "")
                 prompt_parts.append(f"{role.upper()}: {content}")
             prompt_parts.append("")
 
-        # Add context documents
+        # Add context documents with enhanced formatting
         if context_documents:
-            prompt_parts.append("RELEVANT INVOICE DATA:")
-            for i, doc in enumerate(
-                context_documents[:5], 1
-            ):  # Limit to top 5 documents
-                metadata = doc.get("metadata", {})
-                content = doc.get("content", "")
+            # Separate invoice and policy documents
+            invoice_docs = [
+                doc
+                for doc in context_documents
+                if doc.get("type", "invoice") == "invoice"
+                or doc.get("metadata", {}).get("doc_type") == "invoice_analysis"
+            ]
+            policy_docs = [
+                doc
+                for doc in context_documents
+                if doc.get("type") == "policy"
+                or doc.get("metadata", {}).get("doc_type") == "policy"
+            ]
 
-                prompt_parts.append(f"Document {i}:")
+            # Add invoice documents
+            if invoice_docs:
+                prompt_parts.append("RELEVANT INVOICE DATA:")
                 prompt_parts.append(
-                    f"- Employee: {metadata.get('employee_name', 'Unknown')}"
+                    f"(Found {len(invoice_docs)} matching invoice documents)"
                 )
+                for i, doc in enumerate(invoice_docs[:6], 1):  # Limit to 6 invoices
+                    metadata = doc.get("metadata", {})
+                    content = doc.get("content", "")
+
+                    prompt_parts.append(f"Invoice {i}:")
+                    prompt_parts.append(
+                        f"- Employee: {metadata.get('employee_name', 'Unknown')}"
+                    )
+                    prompt_parts.append(
+                        f"- Invoice: {metadata.get('invoice_filename', 'Unknown')}"
+                    )
+                    prompt_parts.append(
+                        f"- Status: {metadata.get('status', 'Unknown')}"
+                    )
+                    prompt_parts.append(
+                        f"- Total Amount: {metadata.get('total_amount', 'Unknown')} {metadata.get('currency', '')}"
+                    )
+                    prompt_parts.append(
+                        f"- Reimbursement Amount: {metadata.get('reimbursement_amount', 'Unknown')} {metadata.get('currency', '')}"
+                    )
+                    prompt_parts.append(f"- Date: {metadata.get('date', 'Unknown')}")
+                    if metadata.get("reason"):
+                        prompt_parts.append(f"- Reason: {metadata.get('reason')}")
+                    if metadata.get("categories"):
+                        prompt_parts.append(
+                            f"- Categories: {', '.join(metadata.get('categories', []))}"
+                        )
+                    if metadata.get("policy_violations"):
+                        prompt_parts.append(
+                            f"- Policy Violations: {', '.join(metadata.get('policy_violations', []))}"
+                        )
+                    prompt_parts.append("")
+
+            # Add policy context
+            if policy_docs:
+                prompt_parts.append("RELEVANT POLICY INFORMATION:")
                 prompt_parts.append(
-                    f"- Invoice: {metadata.get('invoice_filename', 'Unknown')}"
+                    f"(Found {len(policy_docs)} matching policy sections)"
                 )
-                prompt_parts.append(f"- Status: {metadata.get('status', 'Unknown')}")
-                prompt_parts.append(
-                    f"- Amount: {metadata.get('reimbursement_amount', 'Unknown')}"
-                )
-                prompt_parts.append(f"- Date: {metadata.get('date', 'Unknown')}")
-                prompt_parts.append(f"- Content: {content[:300]}...")
-                prompt_parts.append("")
+                for i, doc in enumerate(
+                    policy_docs[:3], 1
+                ):  # Limit to 3 policy sections
+                    metadata = doc.get("metadata", {})
+                    content = doc.get("content", "")
+
+                    prompt_parts.append(f"Policy Section {i}:")
+                    if metadata.get("policy_name"):
+                        prompt_parts.append(f"- Policy: {metadata.get('policy_name')}")
+                    if content:
+                        # Include more policy content for comprehensive context
+                        prompt_parts.append(f"- Content: {content[:800]}...")
+                    prompt_parts.append("")
         else:
-            prompt_parts.append("No relevant invoice data found for this query.")
+            prompt_parts.append("No relevant documents found for this query.")
+            prompt_parts.append(
+                "Please inform the user and suggest alternative queries."
+            )
             prompt_parts.append("")
 
-        # Add current query
+        # Add current query with enhanced instructions
         prompt_parts.append(f"CURRENT QUERY: {query}")
         prompt_parts.append("")
+        prompt_parts.append("RESPONSE INSTRUCTIONS:")
         prompt_parts.append(
-            "Please provide a helpful response based on the available information."
+            "- Use conversation history to provide contextual responses"
         )
+        prompt_parts.append("- Reference previous queries when relevant")
+        prompt_parts.append(
+            "- Format invoice data in clear tables when showing multiple records"
+        )
+        prompt_parts.append("- Provide contextually relevant suggestions")
+        prompt_parts.append("- Be specific with amounts, dates, and employee names")
+        prompt_parts.append("")
 
         return "\n".join(prompt_parts)
 
@@ -742,7 +853,7 @@ EXAMPLE SUGGESTIONS:
         self, invoice_text: str, policy_text: str, employee_name: str
     ):
         """
-        Analyze an invoice against HR reimbursement policy with streaming updates.
+        Analyze an invoice against HR reimbursement policy with streaming updates using structured output.
 
         Args:
             invoice_text: Extracted text from invoice PDF
@@ -774,46 +885,66 @@ EXAMPLE SUGGESTIONS:
                 "data": {"status": "analyzing", "stage": "llm_processing"},
             }
 
-            # Get streaming response from LLM
-            full_response = ""
-            chunk_count = 0
+            # Get structured response instead of streaming for better parsing
+            try:
+                result = await self._generate_structured_invoice_response(full_prompt)
 
-            async for chunk in self.generate_streaming_response(full_prompt):
-                chunk_count += 1
-                full_response += chunk
+                # Yield completion with structured result
+                yield {
+                    "type": "invoice_analysis",
+                    "data": {
+                        "status": "completed",
+                        "result": result.model_dump(),
+                        "structured": True,
+                    },
+                }
 
-                # Yield periodic progress updates
-                if chunk_count % 5 == 0:
-                    yield {
-                        "type": "invoice_analysis",
-                        "data": {
-                            "status": "analyzing",
-                            "stage": "llm_streaming",
-                            "chunks_received": chunk_count,
-                        },
-                    }
+                self.logger.info(
+                    f"Streaming invoice analysis completed for {employee_name} with structured output"
+                )
 
-            # Parse the response
-            yield {
-                "type": "invoice_analysis",
-                "data": {"status": "parsing", "stage": "response_parsing"},
-            }
+            except Exception as structured_error:
+                self.logger.warning(
+                    f"Structured analysis failed, falling back to streaming: {structured_error}"
+                )
 
-            result = self._parse_invoice_analysis_response(full_response)
+                # Fallback to streaming approach if structured fails
+                full_response = ""
+                chunk_count = 0
 
-            # Yield completion
-            yield {
-                "type": "invoice_analysis",
-                "data": {
-                    "status": "completed",
-                    "result": result,
-                    "chunks_processed": chunk_count,
-                },
-            }
+                async for chunk in self.generate_streaming_response(full_prompt):
+                    chunk_count += 1
+                    full_response += chunk
 
-            self.logger.info(
-                f"Streaming invoice analysis completed for {employee_name}"
-            )
+                    # Yield periodic progress updates
+                    if chunk_count % 5 == 0:
+                        yield {
+                            "type": "invoice_analysis",
+                            "data": {
+                                "status": "analyzing",
+                                "stage": "llm_streaming",
+                                "chunks_received": chunk_count,
+                            },
+                        }
+
+                # Parse the response using fallback method
+                yield {
+                    "type": "invoice_analysis",
+                    "data": {"status": "parsing", "stage": "response_parsing"},
+                }
+
+                result = self._parse_invoice_analysis_response(full_response)
+
+                # Yield completion
+                yield {
+                    "type": "invoice_analysis",
+                    "data": {
+                        "status": "completed",
+                        "result": result,
+                        "chunks_processed": chunk_count,
+                        "structured": False,
+                    },
+                }
 
         except Exception as e:
             self.logger.error(
@@ -852,3 +983,88 @@ EXAMPLE SUGGESTIONS:
         except Exception as e:
             self.logger.error(f"LLM service health check failed: {e}")
             raise Exception(f"LLM service unhealthy: {str(e)}")
+
+    async def _generate_structured_invoice_response(
+        self, prompt: str
+    ) -> LLMInvoiceAnalysisResponse:
+        """
+        Generate structured invoice analysis response using Google Gen AI SDK with response schema.
+
+        Args:
+            prompt: The full prompt to send to the model
+
+        Returns:
+            Validated LLMInvoiceAnalysisResponse object
+
+        Raises:
+            Exception: If the response doesn't conform to the schema or generation fails
+        """
+        try:
+            # Get the JSON schema from the Pydantic model
+            response_schema = LLMInvoiceAnalysisResponse.model_json_schema()
+
+            # Create the generation request with response schema enforcement
+            response = await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=settings.LLM_TEMPERATURE,
+                    max_output_tokens=settings.MAX_TOKENS,
+                    response_mime_type="application/json",
+                    response_schema=response_schema,
+                ),
+            )
+
+            # Extract text from response
+            if response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    response_text = candidate.content.parts[0].text
+                    if response_text is not None:
+                        # Parse and validate the JSON response using Pydantic
+                        try:
+                            response_data = json.loads(response_text)
+                            validated_response = LLMInvoiceAnalysisResponse(
+                                **response_data
+                            )
+                            self.logger.info(
+                                "Successfully generated and validated structured response"
+                            )
+                            return validated_response
+                        except json.JSONDecodeError as e:
+                            self.logger.error(f"Failed to parse JSON response: {e}")
+                            raise ValueError(f"Invalid JSON response: {e}")
+                        except Exception as e:
+                            self.logger.error(
+                                f"Failed to validate response schema: {e}"
+                            )
+                            raise ValueError(f"Response validation failed: {e}")
+                    else:
+                        raise ValueError("Response text is None")
+                else:
+                    raise ValueError("No content found in response")
+            else:
+                raise ValueError("No candidates in response")
+
+        except Exception as e:
+            self.logger.error(f"Error generating structured response: {e}")
+            # If structured generation fails, try to create a minimal valid response
+            try:
+                fallback_response = LLMInvoiceAnalysisResponse(
+                    status=ReimbursementStatus.DECLINED,
+                    reason=f"Error during structured analysis: {str(e)}",
+                    total_amount=0.0,
+                    reimbursement_amount=0.0,
+                    currency="INR",
+                    categories=["unknown"],
+                    policy_violations=[f"Analysis failed: {str(e)}"],
+                )
+                self.logger.warning(
+                    "Using fallback structured response due to generation error"
+                )
+                return fallback_response
+            except Exception as fallback_error:
+                self.logger.error(
+                    f"Failed to create fallback response: {fallback_error}"
+                )
+                raise Exception(f"Structured response generation failed: {str(e)}")

@@ -90,6 +90,20 @@ async def analyze_invoices(
                     status_code=400, detail="Could not extract text from policy PDF"
                 )
 
+            # Store policy document in vector database for chatbot context
+            try:
+                await vector_store.store_policy_document(
+                    policy_text=policy_text,
+                    policy_name=f"HR_Policy_{employee_name}_{datetime.now().strftime('%Y%m%d')}",
+                    organization="Company",
+                )
+                logger.info(
+                    f"Policy document stored in vector database for {employee_name}"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to store policy in vector database: {e}")
+                # Don't fail the entire process if policy storage fails
+
             # Save and extract invoices ZIP file
             zip_path = await save_uploaded_file(invoices_zip, temp_dir)
             invoice_files = await extract_zip_file(zip_path, temp_dir)
@@ -325,6 +339,20 @@ async def analyze_invoices_streaming(
                     )
                     yield f"data: {error_chunk.model_dump_json()}\n\n"
                     return
+
+                # Store policy document in vector database for chatbot context
+                try:
+                    await vector_store.store_policy_document(
+                        policy_text=policy_text,
+                        policy_name=f"HR_Policy_{employee_name}_{datetime.now().strftime('%Y%m%d')}",
+                        organization="Company",
+                    )
+                    logger.info(
+                        f"Policy document stored in vector database for {employee_name}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to store policy in vector database: {e}")
+                    # Don't fail the entire process if policy storage fails
 
                 yield f"data: {InvoiceAnalysisStreamingChunk(type=InvoiceAnalysisStreamingChunkType.POLICY_PROCESSING, data={'status': 'completed', 'policy_length': len(policy_text)}).model_dump_json()}\n\n"
 

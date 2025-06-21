@@ -40,6 +40,88 @@ class InvoiceAnalysisRequest(BaseModel):
         json_schema_extra = {"example": {"employee_name": "John Doe"}}
 
 
+class LLMInvoiceAnalysisResponse(BaseModel):
+    """
+    Structured schema for LLM invoice analysis responses.
+    
+    This model defines the exact structure that the LLM must return
+    to ensure consistent, parseable responses.
+    """
+    
+    status: ReimbursementStatus = Field(
+        ..., 
+        description="Reimbursement status - must be one of: fully_reimbursed, partially_reimbursed, declined"
+    )
+    reason: str = Field(
+        ..., 
+        min_length=10,
+        max_length=1000,
+        description="Detailed explanation of the reimbursement decision"
+    )
+    total_amount: float = Field(
+        ..., 
+        ge=0.0,
+        description="Total invoice amount extracted from the document - REQUIRED"
+    )
+    reimbursement_amount: float = Field(
+        ..., 
+        ge=0.0,
+        description="Amount to be reimbursed based on policy analysis"
+    )
+    currency: str = Field(
+        ..., 
+        min_length=3,
+        max_length=3,
+        description="Currency code (INR, USD, EUR, etc.) - REQUIRED"
+    )
+    categories: List[str] = Field(
+        ..., 
+        description="Expense categories identified from the invoice - REQUIRED array"
+    )
+    policy_violations: Optional[List[str]] = Field(
+        default=None, 
+        description="List of policy violations, null if none found"
+    )
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, v):
+        """Validate currency code format."""
+        if not v.isupper() or len(v) != 3:
+            raise ValueError("Currency must be a 3-letter uppercase code (e.g., INR, USD)")
+        return v
+
+    @field_validator("categories")
+    @classmethod
+    def validate_categories(cls, v):
+        """Validate expense categories."""
+        if not v or len(v) == 0:
+            raise ValueError("At least one expense category must be provided")
+        # Clean up categories
+        return [cat.strip().lower() for cat in v if cat.strip()]
+
+    @field_validator("reimbursement_amount")
+    @classmethod
+    def validate_reimbursement_amount(cls, v, info):
+        """Validate that reimbursement amount doesn't exceed total amount."""
+        if 'total_amount' in info.data and v > info.data['total_amount']:
+            raise ValueError("Reimbursement amount cannot exceed total amount")
+        return v
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "partially_reimbursed",
+                "reason": "Hotel expenses approved but alcohol charges are not covered under company policy",
+                "total_amount": 2500.0,
+                "reimbursement_amount": 2000.0,
+                "currency": "INR",
+                "categories": ["accommodation", "meals"],
+                "policy_violations": ["Alcohol expenses not reimbursable"]
+            }
+        }
+
+
 class InvoiceAnalysisResult(BaseModel):
     """Model for individual invoice analysis result."""
 
