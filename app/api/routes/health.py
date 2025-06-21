@@ -26,7 +26,71 @@ def get_vector_store(request: Request) -> VectorStoreService:
     return request.app.state.vector_store
 
 
-@router.get("/health", response_model=HealthResponse, tags=["health"])
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    tags=["health"],
+    summary="Comprehensive Health Check",
+    description="""
+Comprehensive health check endpoint for monitoring system components.
+
+This endpoint performs detailed health checks on all system components and 
+dependencies, providing comprehensive status information for monitoring and 
+troubleshooting purposes.
+
+### Checked Components:
+- **Vector Store (Qdrant)**: Database connectivity and responsiveness
+- **LLM Service (Gemini)**: AI service availability and API access
+- **File System**: Upload directory access and permissions
+- **Application**: Overall application health and uptime
+
+### Health Status Levels:
+- **HEALTHY**: Component is fully operational
+- **DEGRADED**: Component has issues but is partially functional
+- **UNHEALTHY**: Component is not functioning properly
+
+### Response Information:
+- Individual service health status and response times
+- Overall system health assessment
+- Detailed error messages for troubleshooting
+- System uptime and version information
+
+### Response Time Metrics:
+Each service includes response time measurements in milliseconds for 
+performance monitoring and alerting.
+""",
+    response_description="Detailed health status of all system components",
+    responses={
+        200: {
+            "description": "Health check completed (may include unhealthy services)",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "healthy",
+                        "timestamp": "2024-12-21T10:00:00Z",
+                        "version": "1.0.0",
+                        "uptime_seconds": 3600,
+                        "services": [
+                            {
+                                "name": "vector_store",
+                                "status": "healthy",
+                                "message": "Qdrant connection successful",
+                                "response_time_ms": 25.5
+                            },
+                            {
+                                "name": "llm_service",
+                                "status": "healthy",
+                                "message": "Gemini API accessible",
+                                "response_time_ms": 150.2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        500: {"description": "Critical system failure"}
+    }
+)
 async def comprehensive_health_check(
     vector_store: VectorStoreService = Depends(get_vector_store),
 ) -> HealthResponse:
@@ -141,7 +205,48 @@ async def comprehensive_health_check(
     )
 
 
-@router.get("/health/quick", tags=["health"])
+@router.get(
+    "/health/quick",
+    tags=["health"],
+    summary="Quick Health Check",
+    description="""
+Lightweight health check endpoint optimized for load balancers and uptime monitoring.
+
+This endpoint provides a fast, minimal health check without testing individual 
+components.
+
+### Use Cases:
+- **Uptime Monitoring**: External monitoring services
+- **Container Orchestration**: Docker health checks
+- **High-Frequency Polling**: Systems requiring frequent status updates
+
+### Performance:
+- Minimal resource usage
+- Sub-millisecond response time
+- No external service dependencies
+- Suitable for high-frequency requests
+
+### Response Content:
+- Simple status confirmation
+- Uptime information
+- Timestamp for monitoring
+""",
+    response_description="Simple OK status for load balancer health checks",
+    responses={
+        200: {
+            "description": "Service is running and responding",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "ok",
+                        "timestamp": "2024-12-21T10:00:00Z",
+                        "uptime": 3600.5
+                    }
+                }
+            }
+        }
+    }
+)
 async def quick_health_check() -> dict:
     """
     Quick health check endpoint for load balancers.

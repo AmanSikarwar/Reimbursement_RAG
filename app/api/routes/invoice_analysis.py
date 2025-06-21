@@ -42,33 +42,305 @@ def get_vector_store(request: Request) -> VectorStoreService:
     return request.app.state.vector_store
 
 
-@router.post("/analyze-invoices", response_model=InvoiceAnalysisResponse)
+@router.post(
+    "/analyze-invoices",
+    response_model=InvoiceAnalysisResponse,
+    summary="Analyze Employee Invoice Reimbursements",
+    description="""
+**AI-powered invoice analysis against HR reimbursement policies with comprehensive processing pipeline.**
+    
+This endpoint processes employee expense invoices using advanced AI to determine reimbursement eligibility
+based on company HR policies. The system provides detailed analysis, policy compliance checking, and
+stores results for future querying via the chatbot interface.
+    
+## Processing Workflow
+    
+### 1. **File Validation & Upload** (5-10 seconds)
+- Validates policy PDF format and size limits
+- Validates invoices ZIP structure and contents
+- Performs security checks on uploaded files
+- Extracts and prepares files for processing
+    
+### 2. **Policy Analysis** (10-20 seconds)
+- Extracts and parses HR policy document text
+- Identifies reimbursement rules and limits
+- Creates policy knowledge base for comparison
+    
+### 3. **Invoice Processing** (30-60 seconds per invoice)
+- Extracts text and metadata from each PDF
+- Uses Gemini LLM for intelligent content analysis
+- Identifies amounts, dates, categories, and vendors
+- Detects potential duplicate submissions
+    
+### 4. **Policy Compliance Check** (20-30 seconds per invoice)
+- Compares invoice details against policy rules
+- Calculates reimbursable amounts per category
+- Identifies policy violations and exceptions
+- Generates detailed reasoning for decisions
+    
+### 5. **Vector Storage** (5-15 seconds)
+- Creates embeddings for searchable content
+- Stores analysis results in Qdrant database
+- Enables future chatbot queries and analytics
+    
+## Response Details
+    
+### Processing Summary
+- Total invoices processed and success/failure counts
+- Aggregate amounts and reimbursement totals
+- Processing time and performance metrics
+- Duplicate detection results
+    
+### Individual Results
+- Per-invoice analysis with detailed breakdowns
+- Reimbursement status (fully/partially/declined)
+- Policy violation details and explanations
+- Amount categorization and calculations
+    
+## Error Handling
+    
+The system provides detailed error reporting for:
+- Invalid file formats or corrupted uploads
+- Policy parsing failures
+- Invoice processing errors
+- LLM service availability issues
+- Vector database connectivity problems
+    
+## Best Practices
+    
+- **File Organization**: Use clear, descriptive filenames
+- **Policy Updates**: Re-upload policy if rules change
+- **Batch Size**: Process 10-50 invoices per batch for optimal performance
+- **Naming Convention**: Include employee ID or department in filenames
+- **File Quality**: Ensure PDFs are text-searchable, not scanned images
+    
+---
+    
+**Pro Tip**: For large batches, consider using the streaming endpoint `/analyze-invoices/stream` 
+to get real-time progress updates during processing.
+""",
+    response_description="Comprehensive analysis results with processing summary and individual invoice details",
+    responses={
+        200: {
+            "description": "Invoice analysis completed successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "message": "Successfully processed 3 invoices for Aman Sikarwar",
+                        "employee_name": "Aman Sikarwar",
+                        "total_invoices": 3,
+                        "processed_invoices": 3,
+                        "failed_invoices": 0,
+                        "processing_time_seconds": 45.2,
+                        "summary": {
+                            "total_amount": 15000.0,
+                            "total_reimbursement": 12500.0,
+                            "fully_reimbursed_count": 2,
+                            "partially_reimbursed_count": 1,
+                            "declined_count": 0,
+                            "policy_violations_count": 1,
+                            "duplicate_count": 0
+                        },
+                        "results": [
+                            {
+                                "filename": "travel_receipt_001.pdf",
+                                "status": "fully_reimbursed",
+                                "reason": "Business travel expense within policy limits. Hotel stay approved for client meeting in Mumbai.",
+                                "total_amount": 5000.0,
+                                "reimbursement_amount": 5000.0,
+                                "currency": "INR",
+                                "categories": ["accommodation", "business_travel"],
+                                "policy_violations": None,
+                                "from_cache": False
+                            },
+                            {
+                                "filename": "meal_receipt_002.pdf",
+                                "status": "partially_reimbursed",
+                                "reason": "Meal expense partially approved. Alcohol charges excluded per company policy.",
+                                "total_amount": 3000.0,
+                                "reimbursement_amount": 2500.0,
+                                "currency": "INR",
+                                "categories": ["meals", "entertainment"],
+                                "policy_violations": ["alcohol_charges_excluded"],
+                                "from_cache": False
+                            }
+                        ],
+                        "processing_errors": [],
+                        "timestamp": "2024-12-21T10:00:00Z"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Bad request - Invalid file format, size exceeded, or malformed data",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "invalid_file_format": {
+                            "summary": "Invalid file format",
+                            "value": {
+                                "success": False,
+                                "error": "validation_error",
+                                "message": "Invalid file format",
+                                "details": [
+                                    {
+                                        "code": "INVALID_FORMAT",
+                                        "message": "Policy file must be PDF format",
+                                        "field": "policy_file"
+                                    }
+                                ]
+                            }
+                        },
+                        "file_size_exceeded": {
+                            "summary": "File size limit exceeded",
+                            "value": {
+                                "success": False,
+                                "error": "file_size_error",
+                                "message": "File size exceeds maximum limit of 50MB"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        422: {
+            "description": "Validation error in request parameters",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "error": "validation_error",
+                        "message": "Request validation failed",
+                        "details": [
+                            {
+                                "code": "MISSING_FIELD",
+                                "message": "Employee name is required",
+                                "field": "employee_name"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Internal server error during processing",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "error": "processing_error",
+                        "message": "Error during invoice analysis processing",
+                        "details": [
+                            {
+                                "code": "LLM_SERVICE_ERROR",
+                                "message": "Gemini API temporarily unavailable"
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+)
 async def analyze_invoices(
     request: Request,
-    employee_name: str = Form(..., description="Name of the employee"),
-    policy_file: UploadFile = File(..., description="HR reimbursement policy PDF"),
+    employee_name: str = Form(
+        ..., 
+        description="Name of the employee submitting invoices for reimbursement analysis",
+        example="Aman Sikarwar",
+        min_length=2,
+        max_length=100,
+        title="Employee Name"
+    ),
+    policy_file: UploadFile = File(
+        ..., 
+        description="HR reimbursement policy PDF file (max 50MB). Should contain clear policy rules, limits, and guidelines.",
+        title="HR Policy PDF",
+        alias="policy_file"
+    ),
     invoices_zip: UploadFile = File(
-        ..., description="ZIP file containing invoice PDFs"
+        ..., 
+        description="ZIP archive containing invoice PDF files (max 50MB). Each PDF should be a clear, readable invoice document.",
+        title="Invoices ZIP Archive",
+        alias="invoices_zip"
     ),
     vector_store: VectorStoreService = Depends(get_vector_store),
 ) -> InvoiceAnalysisResponse:
     """
-    Analyze employee invoices against HR reimbursement policy.
+    Analyze employee invoices against HR reimbursement policy using AI.
 
-    This endpoint processes a ZIP file containing invoice PDFs and analyzes them
-    against the provided HR policy using an LLM. Results are stored in the vector database.
+    This comprehensive endpoint processes employee expense invoices using advanced AI analysis
+    to determine reimbursement eligibility based on company HR policies. The system performs
+    intelligent document analysis, policy compliance checking, and stores structured results
+    for future querying and analytics.
+
+    ## Processing Details
+
+    ### Document Analysis
+    - **Policy Parsing**: Extracts and interprets HR policy rules and limits
+    - **Invoice OCR**: Reads and processes invoice text, amounts, and metadata
+    - **Content Validation**: Ensures documents are readable and complete
+    - **Duplicate Detection**: Identifies potentially duplicate submissions
+
+    ### AI Analysis Pipeline
+    - **Gemini LLM Integration**: Uses Google's advanced language model
+    - **Contextual Understanding**: Analyzes business context and compliance
+    - **Rule Application**: Applies policy rules to individual line items
+    - **Decision Reasoning**: Provides detailed explanations for all decisions
+
+    ### Storage & Indexing
+    - **Vector Database**: Stores embeddings for semantic search
+    - **Metadata Indexing**: Enables filtering and categorization
+    - **Audit Trail**: Maintains complete processing history
 
     Args:
-        employee_name: Name of the employee submitting invoices
-        policy_file: PDF file containing HR reimbursement policy
-        invoices_zip: ZIP file containing one or more invoice PDFs
-        vector_store: Vector store service dependency
+        employee_name (str): Full name of the employee submitting invoices.
+            Must be 2-100 characters. Used for attribution and filtering.
+        policy_file (UploadFile): PDF file containing the HR reimbursement policy.
+            Must be valid PDF format, max 50MB. Should include:
+            - Reimbursement categories and limits
+            - Approval workflows and requirements
+            - Excluded items and restrictions
+            - Documentation requirements
+        invoices_zip (UploadFile): ZIP archive containing invoice PDF files.
+            Must be valid ZIP format, max 50MB. Each PDF should be:
+            - Clear and readable (not scanned image)
+            - Complete invoice with all details
+            - Proper business expense documentation
+        vector_store (VectorStoreService): Injected vector database service
+            for storing analysis results and enabling future queries.
 
     Returns:
-        InvoiceAnalysisResponse with processing results
+        InvoiceAnalysisResponse: Comprehensive analysis results including:
+            - Processing summary with counts and totals
+            - Individual invoice analysis results
+            - Reimbursement decisions with detailed reasoning
+            - Policy compliance status and violations
+            - Error details for any failed processing
 
     Raises:
-        HTTPException: If file validation fails or processing errors occur
+        HTTPException: 
+            - 400: Invalid file format, size exceeded, or corrupted files
+            - 422: Validation error in request parameters
+            - 500: Internal processing errors (LLM API, database, etc.)
+
+    Example:
+        ```python
+        # Using requests library
+        files = {
+            'policy_file': ('policy.pdf', open('policy.pdf', 'rb'), 'application/pdf'),
+            'invoices_zip': ('invoices.zip', open('invoices.zip', 'rb'), 'application/zip')
+        }
+        data = {'employee_name': 'Aman Sikarwar'}
+        response = requests.post('/api/v1/analyze-invoices', files=files, data=data)
+        ```
+
+    Performance Notes:
+        - Processing time scales with number of invoices (2-5 minutes per invoice)
+        - Large batches are processed sequentially to maintain quality
+        - Results are cached to prevent duplicate processing
+        - Vector storage enables fast future queries via chatbot
     """
     logger.info(f"Starting invoice analysis for employee: {employee_name}")
 
@@ -274,13 +546,71 @@ async def get_analysis_status():
     }
 
 
-@router.post("/analyze-invoices-stream")
+@router.post(
+    "/analyze-invoices-stream",
+    summary="Analyze Invoices with Streaming",
+    description="""
+Analyze employee invoices against HR reimbursement policy with real-time streaming updates.
+    
+This endpoint provides the same functionality as `/analyze-invoices` but with 
+real-time streaming updates, allowing clients to track processing progress 
+and receive intermediate results as they become available.
+    
+### Streaming Format:
+The response uses Server-Sent Events (SSE) format with JSON chunks:
+
+```
+data: {"type": "progress", "data": {"stage": "extracting", "progress": 25}}
+data: {"type": "result", "data": {"filename": "invoice1.pdf", "status": "fully_reimbursed"}}
+data: {"type": "summary", "data": {"processed": 3, "total_amount": 15000.0}}
+data: {"type": "done", "data": {"message": "Analysis complete"}}
+```
+    
+### Chunk Types:
+- **progress**: Processing stage updates with percentage
+- **result**: Individual invoice analysis results
+- **error**: Processing error information
+- **summary**: Final processing summary
+- **done**: Analysis completion signal
+    
+### Use Cases:
+- Real-time progress tracking in UI
+- Large batch processing with feedback
+- Progressive result display
+""",
+    response_description="Server-sent events stream with real-time processing updates",
+    responses={
+        200: {
+            "description": "Streaming analysis progress and results",
+            "content": {
+                "text/plain": {
+                    "example": """data: {"type": "progress", "data": {"stage": "validating", "progress": 10}}
+data: {"type": "progress", "data": {"stage": "extracting", "progress": 30}}
+data: {"type": "result", "data": {"filename": "invoice1.pdf", "status": "fully_reimbursed"}}
+data: {"type": "done", "data": {"processed_invoices": 3}}"""
+                }
+            }
+        },
+        400: {"description": "Invalid file format or processing error"},
+        422: {"description": "Validation error in request parameters"}
+    }
+)
 async def analyze_invoices_streaming(
     request: Request,
-    employee_name: str = Form(..., description="Name of the employee"),
-    policy_file: UploadFile = File(..., description="HR reimbursement policy PDF"),
+    employee_name: str = Form(
+        ..., 
+        description="Name of the employee submitting invoices",
+        example="Aman Sikarwar"
+    ),
+    policy_file: UploadFile = File(
+        ..., 
+        description="HR reimbursement policy PDF file (max 50MB)",
+        media_type="application/pdf"
+    ),
     invoices_zip: UploadFile = File(
-        ..., description="ZIP file containing invoice PDFs"
+        ..., 
+        description="ZIP file containing invoice PDFs (max 50MB)",
+        media_type="application/zip"
     ),
     vector_store: VectorStoreService = Depends(get_vector_store),
 ):
